@@ -6,13 +6,15 @@ import registerComponent from '../../core/component_registrator';
 import { inArray } from '../../core/utils/array';
 import { extend } from '../../core/utils/extend';
 import { each } from '../../core/utils/iterator';
+import { getBoundingRect } from '../../core/utils/position';
 import AsyncCollectionWidget from '../collection/ui.collection_widget.async';
 import Promise from '../../core/polyfills/promise';
 import { BindableTemplate } from '../../core/templates/bindable_template';
 import errors from '../../core/errors';
 import fx from '../../animation/fx';
 
-const TOOLBAR_CLASS = 'dx-toolbar';
+import { TOOLBAR_CLASS } from './constants';
+
 const TOOLBAR_BEFORE_CLASS = 'dx-toolbar-before';
 const TOOLBAR_CENTER_CLASS = 'dx-toolbar-center';
 const TOOLBAR_AFTER_CLASS = 'dx-toolbar-after';
@@ -240,8 +242,8 @@ const ToolbarBase = AsyncCollectionWidget.inherit({
             float: 'none'
         });
 
-        const beforeRect = this._$beforeSection.get(0).getBoundingClientRect();
-        const afterRect = this._$afterSection.get(0).getBoundingClientRect();
+        const beforeRect = getBoundingRect(this._$beforeSection.get(0));
+        const afterRect = getBoundingRect(this._$afterSection.get(0));
 
         this._alignCenterSection(beforeRect, afterRect, elementWidth);
 
@@ -278,7 +280,7 @@ const ToolbarBase = AsyncCollectionWidget.inherit({
         const isRTL = this.option('rtlEnabled');
         const leftRect = isRTL ? afterRect : beforeRect;
         const rightRect = isRTL ? beforeRect : afterRect;
-        const centerRect = this._$centerSection.get(0).getBoundingClientRect();
+        const centerRect = getBoundingRect(this._$centerSection.get(0));
 
         if(leftRect.right > centerRect.left || centerRect.right > rightRect.left) {
             this._$centerSection.css({
@@ -307,7 +309,7 @@ const ToolbarBase = AsyncCollectionWidget.inherit({
     },
 
     _alignSectionLabels: function(labels, difference, expanding) {
-        const getRealLabelWidth = function(label) { return label.getBoundingClientRect().width; };
+        const getRealLabelWidth = function(label) { return getBoundingRect(label).width; };
 
         for(let i = 0; i < labels.length; i++) {
             const $label = $(labels[i]);

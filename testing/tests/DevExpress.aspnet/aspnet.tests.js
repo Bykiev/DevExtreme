@@ -3,10 +3,13 @@
         define(function(require, exports, module) {
             require('integration/jquery'),
             require('ui/button');
+            require('ui/check_box');
+            require('ui/drop_down_button');
             require('ui/form');
             require('ui/popup');
             require('ui/select_box');
             require('ui/text_box');
+            require('ui/toolbar');
             require('ui/validator');
             require('ui/validation_summary');
 
@@ -330,6 +333,21 @@
 
         testTemplate('obj', '<%- obj.text %>', 'Test button');
 
+        testTemplate('null', '<% var a = null; %><%- a %>', '');
+        testTemplate('undefined', '<% var a = undefined; %><%- a %>', '');
+        testTemplate('empty', '<%-%>', 'undefined');
+        testTemplate('space', '<%- %>', 'undefined');
+        testTemplate('tab', '<%-\t%>', 'undefined');
+        testTemplate('new line', '<%-\n%>', 'undefined');
+        testTemplate('return', '<%-\r%>', 'undefined');
+        testTemplate('two spaces', '<%-  %>', 'undefined');
+        testTemplate('empty string', '<%- \'\' %>', '');
+        testTemplate('nonempty string', '<%- \'a\' %>', 'a');
+        testTemplate('WA from T954324, null', '<% var value = null; %><%- (value != null ? value : \'\') %>', '');
+        testTemplate('WA from T954324, undefined', '<% var value = undefined; %><%- (value != null ? value : \'\') %>', '');
+        testTemplate('WA from T954324, nempty string', '<% var value = \'\'; %><%- (value != null ? value : \'\') %>', '');
+        testTemplate('WA from T954324, nonempty string', '<% var value = \'a\'; %><%- (value != null ? value : \'\') %>', 'a');
+
         QUnit.module('Alternative syntax (T831170)', function() {
             testTemplate('enabled', 'a [%= \'b\' %] c', 'a b c');
             testTemplate('disabled', '[%= 123 %]', '[%= 123 %]', false);
@@ -521,6 +539,40 @@
             assert.ok($('#' + NUMERIC_ID).dxTextBox('instance'));
         } finally {
             setTemplateEngine('default');
+        }
+    });
+
+    QUnit.test('T886572', function(assert) {
+        aspnet.setTemplateEngine();
+        window.__createCheckBox = function(id) {
+            DevExpress.aspnet.createComponent('dxCheckBox', { text: id }, id);
+        };
+
+        try {
+            $('#qunit-fixture').html(
+                '<div id=toolbar1></div>' +
+                '<script id=template1 type=text/html>' +
+                '  <div id=checkBox1></div><% __createCheckBox("checkBox1") %>' +
+                '</script>'
+            );
+            $('#toolbar1').dxToolbar({
+                items: [
+                    {
+                        widget: 'dxDropDownButton',
+                        options: {
+                            deferRendering: false,
+                            items: [
+                                { template: $('#template1') }
+                            ]
+                        }
+                    }
+                ]
+            });
+
+            assert.ok($('#checkBox1').dxCheckBox('instance'));
+        } finally {
+            setTemplateEngine('default');
+            delete window.__createCheckBox;
         }
     });
 

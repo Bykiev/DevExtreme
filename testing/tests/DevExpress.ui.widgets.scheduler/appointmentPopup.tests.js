@@ -9,7 +9,8 @@ import SchedulerTimezoneEditor from 'ui/scheduler/timezones/ui.scheduler.timezon
 import fx from 'animation/fx';
 import { DataSource } from 'data/data_source/data_source';
 import resizeCallbacks from 'core/utils/resize_callbacks';
-
+import messageLocalization from 'localization/message';
+import { APPOINTMENT_FORM_GROUP_NAMES } from 'ui/scheduler/ui.scheduler.appointment_form';
 import 'ui/scheduler/ui.scheduler';
 import 'ui/switch';
 
@@ -18,14 +19,15 @@ const APPOINTMENT_POPUP_WIDTH_WITH_RECURRENCE = 970;
 const checkFormWithRecurrenceEditor = (assert, instance, visibility) => {
     const width = visibility === true ? APPOINTMENT_POPUP_WIDTH_WITH_RECURRENCE : APPOINTMENT_POPUP_WIDTH;
     const colSpan = visibility === true ? 1 : 2;
-    const css = visibility === true ? 'block' : 'none';
     const form = instance.getAppointmentDetailsForm();
-    const recurrenceEditor = form.getEditor('recurrenceRule');
-    assert.equal(recurrenceEditor.option('visible'),
-        visibility, `Container is ${visibility === true ? 'visible' : 'not visible'}`);
-    assert.equal(form.option('items')[0].colSpan, colSpan, 'colSpan of main group');
-    assert.equal(instance.getAppointmentPopup().option('maxWidth'), width, 'maxWidth of popup');
-    assert.equal(recurrenceEditor._$container.css('display'), css, 'correct css style');
+
+    assert.equal(form.itemOption(APPOINTMENT_FORM_GROUP_NAMES.Recurrence).visible,
+        visibility, `Recurrence Editor is ${visibility === true ? 'visible' : 'not visible'}`);
+
+    assert.equal(form.itemOption(APPOINTMENT_FORM_GROUP_NAMES.Main).colSpan, colSpan, 'colSpan of main group is correct');
+    assert.equal(form.itemOption(APPOINTMENT_FORM_GROUP_NAMES.Recurrence).colSpan, colSpan, 'colSpan of recurrence group is correct');
+
+    assert.equal(instance.getAppointmentPopup().option('maxWidth'), width, 'maxWidth of popup is correct');
 };
 
 const createInstance = function(options) {
@@ -112,6 +114,35 @@ const moduleConfig = {
 };
 
 QUnit.module('Appointment popup form', moduleConfig, () => {
+    QUnit.test('Recurrence form should work properly if recurrenceRule property mapped recurrenceRuleExpr', function(assert) {
+        const scheduler = createScheduler({
+            dataSource: [{
+                text: 'Watercolor Landscape',
+                startDate: new Date(2017, 4, 1, 9, 30),
+                endDate: new Date(2017, 4, 1, 11),
+                customRecurrenceRule: 'FREQ=WEEKLY;BYDAY=TU,FR;COUNT=10'
+            }],
+            views: ['month'],
+            currentView: 'month',
+            currentDate: new Date(2017, 4, 25),
+            recurrenceRuleExpr: 'customRecurrenceRule',
+            height: 600
+        });
+
+        scheduler.appointments.dblclick(0);
+        scheduler.appointmentPopup.dialog.clickEditSeries();
+
+        const form = scheduler.instance._appointmentPopup._appointmentForm;
+
+        assert.ok(form.getEditor('repeat').option('value'), 'repeat checkbox should be checked');
+        assert.ok(form.option('items')[1].visible, 'recurrence form should be visible');
+
+        scheduler.instance.showAppointmentPopup();
+
+        assert.notOk(form.getEditor('repeat').option('value'), 'repeat checkbox should be unchecked if empty form');
+        assert.notOk(form.option('items')[1].visible, 'recurrence form should be invisible if empty form');
+    });
+
     QUnit.test('showAppointmentPopup method should be work properly with no argument', function(assert) {
         const cases = [
             () => {
@@ -174,6 +205,21 @@ QUnit.module('Appointment popup form', moduleConfig, () => {
         });
     });
 
+    QUnit.test('Appointment popup form should have two named groups', function(assert) {
+        const scheduler = createScheduler({ dataSource: [] });
+        const data = {
+            text: 'appointment',
+            startDate: new Date(2017, 4, 1, 9, 30),
+            endDate: new Date(2017, 4, 1, 11),
+        };
+
+        scheduler.instance.showAppointmentPopup(data);
+        const form = scheduler.instance.getAppointmentDetailsForm();
+
+        assert.equal(form.option('items')[0].name, APPOINTMENT_FORM_GROUP_NAMES.Main, 'first group name is correct');
+        assert.equal(form.option('items')[1].name, APPOINTMENT_FORM_GROUP_NAMES.Recurrence, 'second group name is correct');
+    });
+
     QUnit.test('Appointment popup should be with correct dates after change allDay switch and w/o saving (T832711)', function(assert) {
         const scheduler = createScheduler({ dataSource: [] });
         const data = {
@@ -192,6 +238,27 @@ QUnit.module('Appointment popup form', moduleConfig, () => {
 
         assert.deepEqual(scheduler.appointmentForm.getEditor('startDate').option('value'), data.startDate);
         assert.deepEqual(scheduler.appointmentForm.getEditor('endDate').option('value'), data.endDate);
+    });
+
+    QUnit.test('onAppointmentFormOpening event should pass e.popup argument', function(assert) {
+        const data = [{
+            text: 'Website Re-Design Plan',
+            startDate: new Date(2017, 4, 22, 9, 30),
+            endDate: new Date(2017, 4, 22, 11, 30)
+        }];
+
+        const scheduler = createScheduler({
+            dataSource: data,
+            onAppointmentFormOpening: (e) => {
+                assert.equal(e.popup.NAME, 'dxPopup', 'e.popup should be instance of dxPopup');
+
+                e.popup.option('showTitle', true);
+                e.popup.option('title', 'Information');
+            }
+        });
+
+        scheduler.appointments.dblclick();
+        assert.equal(scheduler.appointmentPopup.getPopupTitleElement().length, 1, 'title should be visible, after set dxPopup property on onAppointmentFormOpening');
     });
 
     QUnit.test('onAppointmentFormOpening event should handle e.cancel value', function(assert) {
@@ -232,6 +299,23 @@ QUnit.module('Appointment popup form', moduleConfig, () => {
         });
     });
 
+    QUnit.test('Appointment popup shouldn\'t render recurrence editor, if previous was with recurrence', function(assert) {
+        const scheduler = createScheduler();
+
+        scheduler.appointments.dblclick();
+        scheduler.appointmentPopup.dialog.clickEditSeries();
+
+        assert.ok(scheduler.appointmentPopup.form.isRecurrenceEditorVisible(), 'Recurrence editor should visible');
+        assert.equal(scheduler.appointmentPopup.form.getSubject(), 'recurrent-app', 'Subject should equal selected recurrence appointment');
+
+        scheduler.appointmentPopup.clickCancelButton();
+
+        scheduler.appointments.dblclick(5);
+
+        assert.notOk(scheduler.appointmentPopup.form.isRecurrenceEditorVisible(), 'Recurrence editor shouldn\'t visible');
+        assert.equal(scheduler.appointmentPopup.form.getSubject(), 'common-app', 'Subject in form should equal selected common appointment');
+    });
+
     QUnit.test('Appointment popup should work properly', function(assert) {
         const NEW_EXPECTED_SUBJECT = 'NEW SUBJECT';
         const scheduler = createScheduler();
@@ -256,17 +340,7 @@ QUnit.module('Appointment popup form', moduleConfig, () => {
 
         assert.ok(appointmentPopup.form.isRecurrenceEditorVisible(), 'Recurrence editor should be visible after click on recurrence appointment');
         assert.equal(appointmentPopup.form.getSubject(), defaultData[0].text, 'Subject in form should equal selected appointment');
-
-        // TODO: Fix unstable test asserts
-        // scheduler.appointmentPopup.clickDoneButton();
-
-        // scheduler.appointments.click(); // click on common appointment, due to redrawing its index has changed
-        // scheduler.tooltip.clickOnItem();
-
-        // assert.notOk(scheduler.appointmentPopup.form.isRecurrenceEditorVisible(), 'Recurrence editor shouldn\'t visible on click on common appointment');
-        // assert.equal(scheduler.appointmentPopup.form.getSubject(), NEW_EXPECTED_SUBJECT, 'Subject in form should equal selected common appointment');
     });
-
 
     QUnit.test('Recurrence repeat-type editor should have default \'never\' value after reopening appointment popup', function(assert) {
         const firstAppointment = { startDate: new Date(2015, 1, 9), endDate: new Date(2015, 1, 9, 1), text: 'caption 1' };
@@ -289,6 +363,237 @@ QUnit.module('Appointment popup form', moduleConfig, () => {
         visibilityChanged.option('value', true);
 
         assert.strictEqual(repeatTypeEditor.option('value'), 'never', 'Repeat-type editor value is ok');
+    });
+
+    QUnit.test('Update appointment if CustomStore', function(assert) {
+        const done = assert.async();
+        const data = [{
+            startDate: new Date(2015, 4, 24, 9),
+            endDate: new Date(2015, 4, 24, 11)
+        }];
+        const scheduler = createScheduler({
+            views: ['day'],
+            dataSource: {
+                key: 'id',
+                load: () => data,
+                update: (key, values) => {
+                    return new Promise(resolve => {
+                        setTimeout(() => {
+                            const appointmentData = data.filter(item => item.id === key)[0];
+                            $.extend(appointmentData, values);
+                            scheduler.instance.repaint();
+                            resolve();
+                            done();
+                        }, 200);
+                    });
+                },
+            },
+            currentDate: new Date(2015, 4, 24),
+            startDayHour: 8,
+            endDayHour: 18
+        });
+
+        scheduler.instance.showAppointmentPopup({
+            startDate: new Date(2015, 4, 24, 9),
+            endDate: new Date(2015, 4, 24, 11),
+            text: 'Subject'
+        });
+
+        scheduler.appointmentForm.setSubject('New Subject');
+
+        const deferred = scheduler.appointmentPopup.saveAppointmentData();
+
+        assert.notOk(scheduler.appointmentPopup.getInstance()._tryLockSaveChanges(), 'Save changes already locked');
+
+        assert.ok(scheduler.appointmentPopup.hasLoadPanel(), 'has load panel');
+
+        deferred.done(() => {
+            assert.notOk(scheduler.appointmentPopup.hasLoadPanel(), 'has no load panel');
+            assert.equal(scheduler.appointments.getTitleText(0), 'New Subject', 'Subject is correct');
+        });
+    });
+
+    QUnit.test('Insert appointment if CustomStore', function(assert) {
+        const done = assert.async();
+        const data = [];
+        const scheduler = createScheduler({
+            views: ['day'],
+            dataSource: {
+                key: 'id',
+                load: () => data,
+                insert: appointmentData => new Promise(resolve => {
+                    setTimeout(() => {
+                        appointmentData.id = data.length;
+                        data.push(appointmentData);
+                        resolve();
+                        done();
+                    }, 200);
+                })
+            },
+            currentDate: new Date(2015, 4, 24),
+            startDayHour: 8,
+            endDayHour: 18
+        });
+
+        scheduler.instance.showAppointmentPopup();
+
+        scheduler.appointmentForm.setSubject('New Subject');
+        scheduler.appointmentForm.setStartDate(new Date(2015, 4, 24, 9));
+        scheduler.appointmentForm.setEndDate(new Date(2015, 4, 24, 11));
+
+        const deferred = scheduler.appointmentPopup.saveAppointmentData();
+
+        assert.ok(scheduler.appointmentPopup.hasLoadPanel(), 'has load panel');
+
+        deferred.done(() => {
+            assert.notOk(scheduler.appointmentPopup.hasLoadPanel(), 'has no load panel');
+            assert.equal(scheduler.appointments.getTitleText(0), 'New Subject', 'Subject is correct');
+        });
+    });
+
+    [true, false].forEach(cancel => {
+        QUnit.test(`onAppointmentUpdating and e.cancel=${cancel} (T907281)`, function(assert) {
+            const data = [{
+                startDate: new Date(2015, 4, 24, 9),
+                endDate: new Date(2015, 4, 24, 11),
+                text: 'Subject'
+            }];
+            const scheduler = createScheduler({
+                views: ['day'],
+                dataSource: data,
+                currentDate: new Date(2015, 4, 24),
+                startDayHour: 8,
+                endDayHour: 18,
+                onAppointmentUpdating: e => e.cancel = cancel
+            });
+
+            scheduler.instance.showAppointmentPopup(data[0]);
+
+            scheduler.appointmentForm.setSubject('New Subject');
+
+            scheduler.appointmentPopup.saveAppointmentData();
+
+            assert.notOk(scheduler.appointmentPopup.hasLoadPanel(), 'Has no load panel');
+
+            const subject = cancel ? 'Subject' : 'New Subject';
+            assert.equal(scheduler.appointments.getTitleText(0), subject, 'Subject is correct');
+        });
+
+        QUnit.test(`onAppointmentAdding and e.cancel=${cancel}`, function(assert) {
+            const scheduler = createScheduler({
+                views: ['day'],
+                dataSource: [],
+                currentDate: new Date(2015, 4, 24),
+                startDayHour: 8,
+                endDayHour: 18,
+                onAppointmentAdding: e => e.cancel = cancel
+            });
+
+            scheduler.instance.showAppointmentPopup();
+
+            scheduler.appointmentForm.setStartDate(new Date(2015, 4, 24, 9));
+            scheduler.appointmentForm.setEndDate(new Date(2015, 4, 24, 11));
+            scheduler.appointmentForm.setSubject('New Subject');
+
+            scheduler.appointmentPopup.saveAppointmentData();
+
+            assert.notOk(scheduler.appointmentPopup.hasLoadPanel(), 'Has no load panel');
+
+            const subject = cancel ? '' : 'New Subject';
+            assert.equal(scheduler.appointments.getTitleText(0), subject, 'Subject is correct');
+        });
+
+        QUnit.test(`onAppointmentDeleting and e.cancel=${cancel}`, function(assert) {
+            const clock = sinon.useFakeTimers();
+            const data = [{
+                text: 'Some Text',
+                startDate: new Date(2015, 4, 24, 9),
+                endDate: new Date(2015, 4, 24, 11)
+            }];
+            const scheduler = createScheduler({
+                views: ['day'],
+                dataSource: data,
+                currentDate: new Date(2015, 4, 24),
+                startDayHour: 8,
+                endDayHour: 18,
+                onAppointmentDeleting: e => e.cancel = cancel
+            });
+
+            scheduler.instance.deleteAppointment(data[0]);
+            clock.tick();
+
+            assert.notOk(scheduler.appointmentPopup.hasLoadPanel(), 'Has no load panel');
+
+            const subject = cancel ? 'Some Text' : '';
+            assert.equal(scheduler.appointments.getTitleText(0), subject, 'Subject is correct');
+
+            clock.restore();
+        });
+    });
+
+    QUnit.module('toolbar', () => {
+        [true, false].forEach(allowUpdatingValue => {
+            const data = [{
+                text: 'Website Re-Design Plan',
+                startDate: new Date(2017, 4, 22, 9, 30),
+                endDate: new Date(2017, 4, 22, 11, 30),
+                disabled: true
+            }, {
+                text: 'Book Flights to San Fran for Sales Trip',
+                startDate: new Date(2017, 4, 22, 12, 0),
+                endDate: new Date(2017, 4, 22, 13, 0),
+            }];
+
+            QUnit.test(`done button visibility in case allowUpdatingValue = ${allowUpdatingValue}`, function(assert) {
+                const scheduler = createWrapper({
+                    dataSource: data,
+                    views: ['week'],
+                    currentView: 'week',
+                    currentDate: new Date(2017, 4, 25),
+                    editing: {
+                        allowUpdating: allowUpdatingValue
+                    }
+                });
+
+                const assertText = `done button visibility should be equal to = ${allowUpdatingValue}`;
+                for(let i = 0; i < scheduler.appointments.getAppointmentCount(); i++) {
+                    scheduler.appointments.dblclick(i);
+                    assert.equal(scheduler.appointmentPopup.getDoneButton().length > 0, allowUpdatingValue, assertText);
+                    scheduler.appointmentPopup.clickCancelButton();
+                }
+            });
+        });
+
+        QUnit.test('toolbar should be re-rendered after change editing option', function(assert) {
+            const scheduler = createWrapper({
+                dataSource: [],
+                views: ['week'],
+                currentView: 'week',
+                currentDate: new Date(2017, 4, 25),
+                editing: {
+                    allowUpdating: true
+                }
+            });
+
+            const dataObj = {
+                text: 'a',
+                startDate: new Date(2015, 5, 15, 10),
+                endDate: new Date(2015, 5, 15, 11)
+            };
+
+            scheduler.instance.showAppointmentPopup(dataObj);
+            assert.ok(scheduler.appointmentPopup.getDoneButton().length > 0, '"done" button should be visible');
+
+            scheduler.option('editing', {
+                allowUpdating: false
+            });
+
+            scheduler.instance.showAppointmentPopup(dataObj);
+            assert.notOk(scheduler.appointmentPopup.getDoneButton().length > 0, '"done" button shouldn\'t be visible after set allowUpdating option to false');
+
+            scheduler.instance.showAppointmentPopup();
+            assert.ok(scheduler.appointmentPopup.getDoneButton().length > 0, '"done" button should be visible in case \'create new appointment\'');
+        });
     });
 });
 
@@ -332,7 +637,6 @@ if(isDesktopEnvironment()) {
         scheduler.instance.showAppointmentPopup({ startDate: new Date(2018, 5, 18), endDate: Date(2018, 5, 18), text: 'a' });
         checkFormWithRecurrenceEditor(assert, scheduler.instance, false);
         scheduler.instance.getAppointmentPopup().hide();
-
         scheduler.instance.showAppointmentPopup({ startDate: new Date(2018, 5, 18), endDate: Date(2018, 5, 18), text: 'b', recurrenceRule: 'FREQ=WEEKLY' });
         $('.dx-dialog-buttons .dx-button').eq(0).trigger('dxclick');
         checkFormWithRecurrenceEditor(assert, scheduler.instance, true);
@@ -943,7 +1247,7 @@ QUnit.test('Popup should not contain endDateTimeZone editor by default', functio
 
 QUnit.test('It should be possible to render startDateTimeZone editor on appt form', function(assert) {
     this.instance.option('onAppointmentFormOpening', function(e) {
-        e.form.itemOption('startDateTimeZone', { visible: true });
+        e.form.itemOption(`${APPOINTMENT_FORM_GROUP_NAMES.Main}.startDateTimeZone`, { visible: true });
     });
     this.instance.showAppointmentPopup({ startDate: new Date(2015, 1, 1, 1), endDate: new Date(2015, 1, 1, 2), text: 'caption', description: 'First task of this day', allDay: true });
 
@@ -956,7 +1260,7 @@ QUnit.test('It should be possible to render startDateTimeZone editor on appt for
 
 QUnit.test('It should be possible to render endDateTimeZone editor on appt form', function(assert) {
     this.instance.option('onAppointmentFormOpening', function(e) {
-        e.form.itemOption('endDateTimeZone', { visible: true });
+        e.form.itemOption(`${APPOINTMENT_FORM_GROUP_NAMES.Main}.endDateTimeZone`, { visible: true });
     });
     this.instance.showAppointmentPopup({ startDate: new Date(2015, 1, 1, 1), endDate: new Date(2015, 1, 1, 2), text: 'caption', description: 'First task of this day', allDay: true });
 
@@ -1029,13 +1333,12 @@ QUnit.test('Validate works always before done click', function(assert) {
     assert.ok(validation.calledOnce);
 });
 
-QUnit.test('Done button shouldn\'t be disabled if validation fail', function(assert) {
-    const data = new DataSource({
-        store: this.tasks
-    });
-
-    this.instance.option({ dataSource: data });
-    this.instance.option({
+QUnit.test('Load panel should not be shown if validation is fail', function(assert) {
+    const scheduler = createInstance({
+        dataSource: {
+            store: this.tasks
+        },
+        maxAppointmentsPerCell: 2,
         onAppointmentFormOpening: function(data) {
             const form = data.form;
 
@@ -1050,21 +1353,38 @@ QUnit.test('Done button shouldn\'t be disabled if validation fail', function(ass
             }]);
         }
     });
-    this.instance.showAppointmentPopup({ startDate: new Date(2015, 1, 1, 1), endDate: new Date(2015, 1, 1, 2), text: 'caption' });
 
-    $('.dx-scheduler-appointment-popup .dx-popup-done').trigger('dxclick');
+    scheduler.instance.showAppointmentPopup({ startDate: new Date(2015, 1, 1, 1), endDate: new Date(2015, 1, 1, 2), text: 'caption' });
 
-    const doneButton = $('.dx-scheduler-appointment-popup .dx-popup-done.dx-button').dxButton('instance');
-    assert.equal(doneButton.option('disabled'), false, 'done button is not disabled');
+    scheduler.appointmentPopup.clickDoneButton();
+
+    assert.notOk(scheduler.appointmentPopup.hasLoadPanel());
+});
+
+QUnit.test('Done button default configuration should be correct', function(assert) {
+    const scheduler = createInstance({
+        onAppointmentFormOpening: function(e) {
+            const popup = e.component.getAppointmentPopup();
+            const buttons = popup.option('toolbarItems');
+            const doneButton = buttons[0];
+
+            assert.equal(doneButton.options.text, messageLocalization.format('Done'), 'done button text is ok');
+        },
+        onAppointmentAdding: function(e) {
+            e.cancel = true;
+        }
+    });
+
+    scheduler.instance.showAppointmentPopup({ startDate: new Date(2015, 1, 1, 1), endDate: new Date(2015, 1, 1, 2), text: 'caption' });
+
+    scheduler.appointmentPopup.clickDoneButton();
 });
 
 QUnit.test('Done button custom configuration should be correct', function(assert) {
-    const data = new DataSource({
-        store: this.tasks
-    });
-
-    this.instance.option({ dataSource: data });
-    this.instance.option({
+    const scheduler = createInstance({
+        dataSource: new DataSource({
+            store: this.tasks
+        }),
         onAppointmentFormOpening: function(e) {
             const popup = e.component.getAppointmentPopup();
             const buttons = popup.option('toolbarItems');
@@ -1075,47 +1395,50 @@ QUnit.test('Done button custom configuration should be correct', function(assert
             e.cancel = true;
         }
     });
-    this.instance.showAppointmentPopup({ startDate: new Date(2015, 1, 1, 1), endDate: new Date(2015, 1, 1, 2), text: 'caption' });
 
-    $('.dx-scheduler-appointment-popup .dx-popup-done').trigger('dxclick');
+    scheduler.instance.showAppointmentPopup({ startDate: new Date(2015, 1, 1, 1), endDate: new Date(2015, 1, 1, 2), text: 'caption' });
 
-    const doneButton = $('.dx-scheduler-appointment-popup .dx-popup-done.dx-button').dxButton('instance');
+    assert.notOk(scheduler.appointmentPopup.hasLoadPanel(), 'has no load panel');
 
-    assert.equal(doneButton.option('disabled'), false, 'done button is not disabled');
-    assert.equal(doneButton.option('text'), 'Text 1', 'done button text is ok');
+    const doneButtonInstance = scheduler.appointmentPopup.getDoneButton().dxButton('instance');
+    assert.equal(doneButtonInstance.option('text'), 'Text 1', 'done button text is ok');
+
+    scheduler.appointmentPopup.clickDoneButton();
+
+    assert.notOk(scheduler.appointmentPopup.isVisible());
 });
 
-QUnit.test('Done button shouldn\'t be disabled if event validation fail', function(assert) {
-    const data = new DataSource({
-        store: this.tasks
-    });
-
-    this.instance.option({ dataSource: data });
-    this.instance.option({
+QUnit.test('Load panel should be hidden if event validation fail', function(assert) {
+    const scheduler = createInstance({
+        dataSource: new DataSource({
+            store: this.tasks
+        }),
         onAppointmentFormAdding: function(e) {
             e.cancel = true;
         }
     });
-    this.instance.showAppointmentPopup({ startDate: new Date(2015, 1, 1, 1), endDate: new Date(2015, 1, 1, 2), text: 'caption' });
 
-    $('.dx-scheduler-appointment-popup .dx-popup-done').trigger('dxclick');
+    scheduler.instance.showAppointmentPopup({ startDate: new Date(2015, 1, 1, 1), endDate: new Date(2015, 1, 1, 2), text: 'caption' });
 
-    const doneButton = $('.dx-scheduler-appointment-popup .dx-popup-done.dx-button').dxButton('instance');
-    assert.equal(doneButton.option('disabled'), false, 'done button is not disabled');
+    assert.notOk(scheduler.appointmentPopup.hasLoadPanel(), 'has no load panel');
+
+    scheduler.appointmentPopup.clickDoneButton();
+
+    assert.notOk(scheduler.appointmentPopup.isVisible());
 });
 
-QUnit.test('Done button shouldn\'t be disabled at second appointment form opening', function(assert) {
+QUnit.test('Load panel should be hidden at the second appointment form opening', function(assert) {
     const task = { startDate: new Date(2017, 1, 1), endDate: new Date(2017, 1, 1, 0, 10), text: 'caption' };
-    this.instance.option({
+    const scheduler = createInstance({
         dataSource: [task]
     });
 
-    this.instance.showAppointmentPopup(task);
-    $('.dx-scheduler-appointment-popup .dx-popup-done').trigger('dxclick');
-    this.instance.showAppointmentPopup(task);
-    const doneButton = $('.dx-scheduler-appointment-popup .dx-popup-done.dx-button').dxButton('instance');
+    scheduler.instance.showAppointmentPopup(task);
+    scheduler.appointmentPopup.clickDoneButton();
 
-    assert.equal(doneButton.option('disabled'), false, 'done button is not disabled');
+    scheduler.instance.showAppointmentPopup(task);
+
+    assert.notOk(scheduler.appointmentPopup.hasLoadPanel(), 'has no load panel');
 });
 
 QUnit.test('startDateBox & endDateBox should have required validation rules', function(assert) {
@@ -1123,8 +1446,8 @@ QUnit.test('startDateBox & endDateBox should have required validation rules', fu
 
     const form = this.instance.getAppointmentDetailsForm();
 
-    assert.deepEqual(form.itemOption('startDate').validationRules, [{ type: 'required' }]);
-    assert.deepEqual(form.itemOption('endDate').validationRules, [{ type: 'required' }]);
+    assert.deepEqual(form.itemOption(`${APPOINTMENT_FORM_GROUP_NAMES.Main}.startDate`).validationRules, [{ type: 'required' }]);
+    assert.deepEqual(form.itemOption(`${APPOINTMENT_FORM_GROUP_NAMES.Main}.endDate`).validationRules, [{ type: 'required' }]);
 });
 
 QUnit.test('Changes shouldn\'t be saved if form is invalid', function(assert) {
@@ -1189,6 +1512,52 @@ QUnit.test('Popup should be readOnly if appointment is disabled', function(asser
     this.instance._createComponent.getCall(0).args[2].contentTemplate();
 
     assert.equal(this.instance._createComponent.getCall(1).args[2].readOnly, true);
+});
+
+[{
+    disabled: true,
+    result: true,
+    text: 'disabled is true'
+}, {
+    disabled: false,
+    result: false,
+    text: 'disabled is false'
+}, {
+    result: false,
+    text: 'disabled is undefined'
+}, {
+    disabled: () => false,
+    result: false,
+    text: 'disabled is function, return false'
+}, {
+    disabled: () => true,
+    result: true,
+    text: 'disabled is function, return true'
+}].forEach(testCase => {
+    QUnit.test(`Appointment form should be consider disabled property of appointment (${testCase.text})`, function(assert) {
+        const scheduler = createWrapper({
+            dataSource: [],
+            views: ['day'],
+            currentView: 'day',
+            currentDate: new Date(2021, 4, 27)
+        });
+
+        const isReadOnly = sinon.spy(scheduler.instance._appointmentPopup, '_isReadOnly');
+
+        scheduler.instance.showAppointmentPopup({
+            text: 'Appointment',
+            startDate: new Date(2021, 4, 27, 9, 30),
+            endDate: new Date(2021, 4, 27, 11),
+            disabled: testCase.disabled
+        });
+
+        const returnValues = isReadOnly.returnValues;
+        const callCount = isReadOnly.callCount;
+
+        assert.equal(returnValues[0], testCase.result, `_isReadOnly should be return '${testCase.result}' in _createForm call`);
+        assert.equal(returnValues[1], testCase.result, `_isReadOnly should be return '${testCase.result}' in _updateForm call`);
+        assert.equal(callCount, 2, 'isReadOnly method should be call twice');
+    });
 });
 
 QUnit.test('Multiple showing appointment popup for recurrence appointments should work correctly', function(assert) {

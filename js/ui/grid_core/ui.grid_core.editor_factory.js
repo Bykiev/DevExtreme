@@ -8,6 +8,7 @@ import positionUtils from '../../animation/position';
 import { addNamespace, fireEvent, normalizeKeyName } from '../../events/utils';
 import browser from '../../core/utils/browser';
 import { extend } from '../../core/utils/extend';
+import { getBoundingRect } from '../../core/utils/position';
 import EditorFactoryMixin from '../shared/ui.editor_factory_mixin';
 import { isElementInCurrentGrid } from './ui.grid_core.utils';
 
@@ -26,7 +27,7 @@ const DX_HIDDEN = 'dx-hidden';
 const EditorFactory = modules.ViewController.inherit({
     _getFocusedElement: function($dataGridElement) {
         const rowSelector = this.option('focusedRowEnabled') ? 'tr[tabindex]:focus' : 'tr[tabindex]:not(.dx-data-row):focus';
-        const focusedElementSelector = `td[tabindex]:focus, ${rowSelector}, input:focus, textarea:focus, .dx-lookup-field:focus, .dx-checkbox:focus`;
+        const focusedElementSelector = `td[tabindex]:focus, ${rowSelector}, input:focus, textarea:focus, .dx-lookup-field:focus, .dx-checkbox:focus, .dx-switch:focus, .dx-dropdownbutton .dx-buttongroup:focus`;
 
         // T181706
         return $dataGridElement.find(focusedElementSelector);
@@ -125,6 +126,11 @@ const EditorFactory = modules.ViewController.inherit({
         }
     },
 
+    refocus: function() {
+        const $focus = this.focus();
+        this.focus($focus);
+    },
+
     renderFocusOverlay: function($element, hideBorder) {
         const that = this;
 
@@ -142,7 +148,7 @@ const EditorFactory = modules.ViewController.inherit({
             // align "left bottom" for IE, align "right bottom" for Mozilla
             const align = browser.msie ? 'left bottom' : browser.mozilla ? 'right bottom' : 'left top';
             const $content = $element.closest('.' + that.addWidgetPrefix(CONTENT_CLASS));
-            const elemCoord = $element[0].getBoundingClientRect();
+            const elemCoord = getBoundingRect($element.get(0));
 
             that._$focusOverlay
                 .removeClass(DX_HIDDEN)

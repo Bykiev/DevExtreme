@@ -6,6 +6,7 @@ import { DataSource } from 'data/data_source/data_source';
 import { deferUpdate } from 'core/utils/common';
 import registerKeyHandlerTestHelper from '../../helpers/registerKeyHandlerTestHelper.js';
 import errors from 'ui/widget/ui.errors';
+import { normalizeKeyName } from 'events/utils/index';
 
 import 'ui/radio_group';
 
@@ -183,7 +184,7 @@ module('buttons group rendering', () => {
 
         clock.tick(300);
 
-        assert.strictEqual(onContentReadyHandler.callCount, 2);
+        assert.strictEqual(onContentReadyHandler.callCount, 3);
         assert.strictEqual($(instance.element()).find(`.${RADIO_BUTTON_CLASS}`).length, 3);
         clock.restore();
     });
@@ -407,21 +408,80 @@ module('value', moduleConfig, () => {
         assert.strictEqual(e.value, 1, 'itemData is correct');
     });
 
-    test('onValueChanged option should get jQuery event as a parameter', function(assert) {
-        let jQueryEvent;
+    test('widget changes the selection correctly when using the dataSource with the key', function(assert) {
+        assert.expect(2);
+        const items = [
+            { id: '001', text: 'test 1' },
+            { id: '002', text: 'test 2' }
+        ];
         const $radioGroup = createRadioGroup({
-            items: [1, 2, 3],
+            dataSource: {
+                store: {
+                    type: 'array',
+                    data: items,
+                    key: 'id'
+                }
+            },
             onValueChanged: function(e) {
-                jQueryEvent = e.event;
+                assert.deepEqual(e.value, items[0], 'default valueExpr -> set an object as the value');
             }
         });
         const radioGroup = getInstance($radioGroup);
+        const $firstItem = $(radioGroup.itemElements()).first();
 
-        $(radioGroup.itemElements()).first().trigger('dxclick');
-        assert.ok(jQueryEvent, 'jQuery event is defined when click used');
+        $firstItem.trigger('dxclick');
 
-        radioGroup.option('value', 2);
-        assert.notOk(jQueryEvent, 'jQuery event is not defined when api used');
+        assert.ok($firstItem.hasClass('dx-item-selected'), 'first item is selected');
+    });
+
+    QUnit.module('valueChanged handler should receive correct event parameter', {
+        beforeEach: function() {
+            this.valueChangedHandler = sinon.stub();
+            this.$element = createRadioGroup({
+                items: [1, 2],
+                onValueChanged: this.valueChangedHandler,
+                focusStateEnabled: true
+            });
+            this.instance = getInstance(this.$element);
+            this.keyboard = keyboardMock(this.$element);
+            this.$firstItem = $(this.instance.itemElements().first());
+
+            this.testProgramChange = (assert) => {
+                this.instance.option('value', 2);
+
+                const callCount = this.valueChangedHandler.callCount - 1;
+                const event = this.valueChangedHandler.getCall(callCount).args[0].event;
+                assert.strictEqual(event, undefined, 'event is undefined');
+            };
+            this.checkEvent = (assert, type, target, key) => {
+                const event = this.valueChangedHandler.getCall(0).args[0].event;
+                assert.strictEqual(event.type, type, 'event type is correct');
+                assert.strictEqual(event.target, target.get(0), 'event target is correct');
+                if(type === 'keydown') {
+                    assert.strictEqual(normalizeKeyName(event), normalizeKeyName({ key }), 'event key is correct');
+                }
+            };
+        }
+    }, () => {
+        QUnit.test('after click', function(assert) {
+            this.$firstItem.trigger('dxclick');
+
+            this.checkEvent(assert, 'dxclick', this.$firstItem);
+            this.testProgramChange(assert);
+        });
+
+        ['space', 'enter'].forEach(key => {
+            QUnit.test(`after ${key} press`, function(assert) {
+                this.keyboard.press(key);
+
+                this.checkEvent(assert, 'keydown', this.$firstItem, key);
+                this.testProgramChange(assert);
+            });
+        });
+
+        QUnit.test('after runtime change', function(assert) {
+            this.testProgramChange(assert);
+        });
     });
 });
 
@@ -768,5 +828,37 @@ module('option changed', () => {
         instance.option('dataSource', [4, 5, 6]);
 
         assert.deepEqual(instance.getDataSource().items(), [4, 5, 6], 'items from data source');
+    });
+
+    test('widget should select a correct item if an unexisting item was set as a value but new dataSource has it', function(assert) {
+        const instance = getInstance(
+            createRadioGroup({
+                dataSource: new DataSource({ store: [1, 2, 3] }),
+                value: 1
+            })
+        );
+
+        instance.option('value', 4);
+        instance.option('dataSource', new DataSource({ store: [4, 5, 6] }));
+
+        const $radioButtons = instance.$element().find('.dx-radiobutton');
+
+        assert.ok($radioButtons.eq(0).hasClass('dx-radiobutton-checked'), 'correct item is selected');
+    });
+
+    test('widget should select a correct item if an unexisting item was set as a value but new Items has it', function(assert) {
+        const instance = getInstance(
+            createRadioGroup({
+                items: [1, 2, 3],
+                value: 1
+            })
+        );
+
+        instance.option('value', 4);
+        instance.option('items', [4, 5, 6]);
+
+        const $radioButtons = instance.$element().find('.dx-radiobutton');
+
+        assert.ok($radioButtons.eq(0).hasClass('dx-radiobutton-checked'), 'correct item is selected');
     });
 });

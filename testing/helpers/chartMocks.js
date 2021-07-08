@@ -665,7 +665,8 @@ export const MockSeries = function MockSeries(options) {
         getViewport: sinon.stub().returns({}),
         getMarginOptions: sinon.stub().returns(options.marginOptions || {}),
         useAggregation: sinon.stub().returns(false),
-        usePointsToDefineAutoHiding: sinon.stub().returns(false)
+        usePointsToDefineAutoHiding: sinon.stub().returns(false),
+        resetApplyingAnimation: sinon.stub()
     };
 };
 
@@ -963,6 +964,8 @@ export const MockAxis = function(renderOptions) {
 
         hideOuterElements: sinon.spy(),
 
+        getCorrectedValuesToZero: sinon.stub().returns({}),
+
         setPane: function(pane) {
             this.pane = pane;
             this._options.pane = pane;
@@ -1081,7 +1084,7 @@ export const MockAxis = function(renderOptions) {
         getAxisShift: function() {
             return 0;
         },
-        getCustomPositionAxis: commonUtils.noop,
+        getOrthogonalAxis: commonUtils.noop,
         customPositionIsAvailable() {
             return false;
         },
@@ -1098,7 +1101,9 @@ export const MockAxis = function(renderOptions) {
         refreshVisualRangeOption: sinon.spy(),
         prepareAnimation: sinon.spy(),
         setCustomVisualRange: sinon.spy(),
-        handleZoomEnd: sinon.spy()
+        handleZoomEnd: sinon.spy(),
+        resolveOverlappingForCustomPositioning: sinon.spy(),
+        resetApplyingAnimation: sinon.spy()
     };
 };
 

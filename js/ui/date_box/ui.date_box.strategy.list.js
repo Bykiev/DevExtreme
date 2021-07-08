@@ -9,6 +9,7 @@ const extend = require('../../core/utils/extend').extend;
 const dateUtils = require('./ui.date_utils');
 const dateLocalization = require('../../localization/date');
 const dateSerialization = require('../../core/utils/date_serialization');
+const getSizeValue = require('../drop_down_editor/utils').getSizeValue;
 
 const DATE_FORMAT = 'date';
 
@@ -45,9 +46,7 @@ const ListStrategy = DateBoxStrategy.inherit({
     },
 
     popupConfig: function(popupConfig) {
-        return extend(popupConfig, {
-            width: this._getPopupWidth()
-        });
+        return popupConfig;
     },
 
     useCurrentDateByDefault: function() {
@@ -58,12 +57,8 @@ const ListStrategy = DateBoxStrategy.inherit({
         return new Date(null);
     },
 
-    _getPopupWidth: function() {
-        return this.dateBox.$element().outerWidth();
-    },
-
     popupShowingHandler: function() {
-        this._dimensionChanged();
+        this.dateBox._dimensionChanged();
     },
 
     _renderWidget: function() {
@@ -255,25 +250,15 @@ const ListStrategy = DateBoxStrategy.inherit({
         return this._widget;
     },
 
-    _dimensionChanged: function() {
-        this._getPopup() && this._updatePopupDimensions();
-    },
-
-    _updatePopupDimensions: function() {
-        this._updatePopupWidth();
-        this._updatePopupHeight();
-    },
-
-    _updatePopupWidth: function() {
-        this.dateBox._setPopupOption('width', this._getPopupWidth());
-    },
-
     _updatePopupHeight: function() {
-        this.dateBox._setPopupOption('height', 'auto');
+        const dropDownOptionsHeight = getSizeValue(this.dateBox.option('dropDownOptions.height'));
+        if(dropDownOptionsHeight === undefined || dropDownOptionsHeight === 'auto') {
+            this.dateBox._setPopupOption('height', 'auto');
+            const popupHeight = this._widget.$element().outerHeight();
+            const maxHeight = $(window).height() * 0.45;
+            this.dateBox._setPopupOption('height', Math.min(popupHeight, maxHeight));
+        }
 
-        const popupHeight = this._widget.$element().outerHeight();
-        const maxHeight = $(window).height() * 0.45;
-        this.dateBox._setPopupOption('height', Math.min(popupHeight, maxHeight));
         this.dateBox._timeList && this.dateBox._timeList.updateDimensions();
     },
 

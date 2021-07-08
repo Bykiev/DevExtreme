@@ -1,6 +1,6 @@
 import { Deferred, when } from '../../core/utils/deferred';
 import { errors as dataErrors } from '../../data/errors';
-import { isDefined } from '../../core/utils/type';
+import { isDefined, isFunction } from '../../core/utils/type';
 import { compileGetter } from '../../core/utils/data';
 import errors from '../widget/ui.errors';
 import filterUtils from '../shared/filtering';
@@ -194,11 +194,12 @@ function getCustomOperation(customOperations, name) {
 
 function getAvailableOperations(field, filterOperationDescriptions, customOperations) {
     const filterOperations = getFilterOperations(field);
-
+    const isLookupField = !!field.lookup;
     customOperations.forEach(function(customOperation) {
         if(!field.filterOperations && filterOperations.indexOf(customOperation.name) === -1) {
             const dataTypes = customOperation && customOperation.dataTypes;
-            if(dataTypes && dataTypes.indexOf(field.dataType || DEFAULT_DATA_TYPE) >= 0) {
+            const isOperationForbidden = isLookupField ? !!customOperation.notForLookup : false;
+            if(!isOperationForbidden && dataTypes && dataTypes.indexOf(field.dataType || DEFAULT_DATA_TYPE) >= 0) {
                 filterOperations.push(customOperation.name);
             }
         }
@@ -377,6 +378,12 @@ function getNormalizedFields(fields) {
             if(!isDefined(normalizedField.dataType)) {
                 normalizedField.dataType = DEFAULT_DATA_TYPE;
             }
+            if(!isDefined(normalizedField.trueText)) {
+                normalizedField.trueText = messageLocalization.format('dxDataGrid-trueText');
+            }
+            if(!isDefined(normalizedField.falseText)) {
+                normalizedField.falseText = messageLocalization.format('dxDataGrid-falseText');
+            }
             result.push(normalizedField);
         }
         return result;
@@ -389,7 +396,7 @@ function getConditionFilterExpression(condition, fields, customOperations, targe
     const customOperation = customOperations.length && getCustomOperation(customOperations, filterExpression[1]);
 
     if(customOperation && customOperation.calculateFilterExpression) {
-        return customOperation.calculateFilterExpression.apply(customOperation, [filterExpression[2], field, target]);
+        return customOperation.calculateFilterExpression.apply(customOperation, [filterExpression[2], field, fields]);
     } else if(field.createFilterExpression) {
         return field.createFilterExpression.apply(field, [filterExpression[2], filterExpression[1], target]);
     } else if(field.calculateFilterExpression) {
@@ -493,9 +500,23 @@ function getCurrentLookupValueText(field, value, handler) {
     if(lookup.items) {
         handler(lookup.calculateCellValue(value) || '');
     } else {
-        const dataSource = new DataSource(lookup.dataSource);
+        const lookupDataSource = isFunction(lookup.dataSource) ? lookup.dataSource({}) : lookup.dataSource;
+        const dataSource = new DataSource(lookupDataSource);
         dataSource.loadSingle(lookup.valueExpr, value).done(function(result) {
-            result ? handler(lookup.displayExpr ? compileGetter(lookup.displayExpr)(result) : result) : handler('');
+            let valueText = '';
+
+            if(result) {
+                valueText = lookup.displayExpr ? compileGetter(lookup.displayExpr)(result) : result;
+            }
+
+            if(field.customizeText) {
+                valueText = field.customizeText({
+                    value,
+                    valueText
+                });
+            }
+
+            handler(valueText);
         }).fail(function() {
             handler('');
         });

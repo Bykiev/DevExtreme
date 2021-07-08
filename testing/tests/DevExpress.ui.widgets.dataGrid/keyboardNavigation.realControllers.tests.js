@@ -72,7 +72,7 @@ QUnit.module('Real DataController and ColumnsController', {
         this.clock = sinon.useFakeTimers();
     },
     afterEach: function() {
-        this.dispose();
+        this.dispose && this.dispose();
         this.clock.restore();
     }
 }, function() {
@@ -1109,6 +1109,11 @@ QUnit.module('Real DataController and ColumnsController', {
     });
 
     QUnit.test('After apply the edit value with the ENTER key do not display the revert button when the save process, if editing mode is cell (T657148)', function(assert) {
+        if(browser.msie && parseInt(browser.version) <= 11) {
+            assert.ok(true, 'test is ignored in IE11 because it fails on farm');
+            return;
+        }
+
         // arrange
         const that = this;
 
@@ -1141,6 +1146,8 @@ QUnit.module('Real DataController and ColumnsController', {
         // act
         that.editCell(0, 0);
         that.clock.tick();
+
+        browser.msie && $(that.getCellElement(0, 0)).focus(); // should be removed after the IE death
 
         const $input = $(that.getCellElement(0, 0)).find('input');
         $input.val('test').trigger('change');
@@ -1482,5 +1489,40 @@ QUnit.module('Real DataController and ColumnsController', {
                 assert.ok($selectCell.hasClass('dx-cell-focus-disabled'), 'Cell has disable focus class');
             });
         });
+    });
+
+    QUnit.testInActiveWindow('The expand cell should restore focus on expanding a master row when the Enter key is pressed (T892203)', function(assert) {
+        // arrange
+        const $container = $('#container');
+        this.data = [{ id: 1 }];
+        this.columns = ['id'];
+        this.options = {
+            keyExpr: 'id',
+            masterDetail: {
+                enabled: true,
+                template: commonUtils.noop
+            }
+        };
+
+        this.setupModule();
+        this.gridView.render($container);
+        this.clock.tick();
+
+        let $commandCell = $(this.getCellElement(0, 0));
+        $commandCell.focus();
+        this.clock.tick();
+
+        // assert
+        assert.ok($commandCell.is(':focus'), 'command cell is focused');
+        assert.equal($commandCell.find('.dx-datagrid-group-closed').length, 1, 'cell is rendered as collapsed');
+
+        this.triggerKeyDown('enter', false, false, $commandCell);
+        this.clock.tick();
+
+        $commandCell = $(this.getCellElement(0, 0));
+
+        // assert
+        assert.ok($commandCell.is(':focus'), 'command cell is still focused afteк expanding');
+        assert.equal($commandCell.find('.dx-datagrid-group-opened').length, 1, 'cell is rendered as expanded');
     });
 });

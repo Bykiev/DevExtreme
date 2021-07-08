@@ -3450,6 +3450,42 @@ QUnit.module('Selection with views', {
         assert.strictEqual($checkbox.dxCheckBox('option', 'value'), undefined, 'indeterminate state of checkbox');
     });
 
+    // T959045
+    QUnit.test('selectAll checkbox should be visible after change filter if no data', function(assert) {
+        let $checkbox;
+        const testElement = $('#container');
+
+        this.setup();
+        this.columnHeadersView.render(testElement);
+        this.rowsView.render(testElement);
+
+        // assert
+        $checkbox = $('.dx-header-row').find('.dx-checkbox');
+        assert.ok($checkbox.dxCheckBox('option', 'visible'), 'checkbox is visible');
+
+        // act
+        this.filter(['age', '<', 1]);
+        this.refresh();
+
+        // assert
+        $checkbox = $('.dx-header-row').find('.dx-checkbox');
+        assert.notOk($checkbox.dxCheckBox('option', 'visible'), 'checkbox is not visible');
+    });
+
+    // T959045
+    QUnit.test('selectAll checkbox should be visible if no data after first load', function(assert) {
+        const testElement = $('#container');
+
+        // act
+        this.options.dataSource.filter = ['age', '<', 1];
+        this.setup();
+        this.columnHeadersView.render(testElement);
+        this.rowsView.render(testElement);
+
+        // assert
+        const $checkbox = $('.dx-header-row').find('.dx-checkbox');
+        assert.notOk($checkbox.dxCheckBox('option', 'visible'), 'checkbox is not visible');
+    });
 
     QUnit.test('Uncheck selectAll button call deselectAll', function(assert) {
         const testElement = $('#container');
@@ -3771,6 +3807,24 @@ QUnit.module('Selection with views', {
         // assert
         assert.deepEqual(this.selectionController.getSelectedRowKeys(), [{ age: 15, name: 'Alex' }], 'one item is selected');
         assert.strictEqual($checkbox.dxCheckBox('instance').option('value'), true, 'checkbox is checked');
+    });
+
+    // T550013
+    QUnit.test('Click on cell with checkbox should select row', function(assert) {
+        const testElement = $('#container');
+
+        this.options.selection.showCheckBoxesMode = 'always';
+        this.setup();
+        this.columnHeadersView.render(testElement);
+        this.rowsView.render(testElement);
+
+        // act
+        const $selectionCell = testElement.find('.dx-data-row .dx-command-select').eq(0);
+        $selectionCell.trigger(clickEvent.name);
+
+        // assert
+        assert.deepEqual(this.selectionController.getSelectedRowKeys(), [{ age: 15, name: 'Alex' }], 'one item is selected');
+        assert.strictEqual($selectionCell.find('.dx-checkbox').dxCheckBox('instance').option('value'), true, 'checkbox is checked');
     });
 });
 
@@ -4113,6 +4167,74 @@ QUnit.module('Deferred selection', {
 
         // assert
         assert.equal(selectedRowsData.length, 5, 'selected rows data count');
+    });
+
+    // T917204
+    QUnit.test('The getSelectedRowsData method should return correct selected rows data after filtering and selectAll/deselectAll', function(assert) {
+        // arrange
+        let selectedRowsData = [];
+
+        this.setupDataGrid({
+            loadingTimeout: undefined,
+            dataSource: createDataSource(this.data, { key: 'id', pageSize: 2 }),
+            remoteOperations: { filtering: true, sorting: true, paging: true },
+            columns: [
+                { dataField: 'id', dataType: 'number' },
+                { dataField: 'name', dataType: 'string' },
+                { dataField: 'age', dataType: 'number', filterValue: '18', selectedFilterOperation: '<>' }
+            ],
+            selection: { mode: 'multiple', deferred: true }
+        });
+
+        this.selectAll();
+        this.getSelectedRowsData().done((selectedData) => {
+            selectedRowsData = selectedData;
+        });
+        this.clock.tick();
+
+        // assert
+        assert.equal(selectedRowsData.length, 5, 'selected rows data count');
+
+        // arrange
+        this.deselectAll();
+        this.getSelectedRowsData().done((selectedData) => {
+            selectedRowsData = selectedData;
+        });
+        this.clock.tick();
+
+        // assert
+        assert.equal(selectedRowsData.length, 0, 'selected rows data count');
+    });
+
+    // T959045
+    QUnit.test('The selectionFilter should be correctly after select all -> deselect row when there is filter', function(assert) {
+        // arrange
+        this.setupDataGrid({
+            dataSource: [
+                { id: 1, name: 'Alex' },
+                { id: 5, name: 'Sergey' }
+            ],
+            keyExpr: 'id',
+            columns: [{ dataField: 'id', filterValue: 1, dataType: 'number' }],
+            selection: { mode: 'multiple', deferred: true }
+        });
+
+        this.clock.tick();
+
+        const items = this.dataController.items();
+        assert.equal(items.length, 1, 'filtered items');
+
+        // act
+        this.selectionController.selectAll();
+
+        // assert
+        assert.deepEqual(this.option('selectionFilter'), ['id', '=', 1], 'selectionFilter');
+
+        // act
+        this.selectionController.deselectRows(1);
+
+        // assert
+        assert.deepEqual(this.option('selectionFilter'), [], 'selectionFilter');
     });
 });
 

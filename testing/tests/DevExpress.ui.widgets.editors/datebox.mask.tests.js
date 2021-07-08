@@ -14,6 +14,47 @@ QUnit.testStart(() => {
     $('#qunit-fixture').html('<div id=\'dateBox\'></div>');
 });
 
+const simulateIMEInput = function(eventsData) {
+    this.$input.trigger($.Event('keydown', {
+        key: 'Process',
+        code: eventsData.keyDownCode,
+        originalEvent: $.Event('keydown', {
+            key: 'Process',
+            code: eventsData.keyDownCode
+        })
+    }));
+
+    this.$input.trigger($.Event('compositionstart', {
+        type: 'compositionstart',
+        originalEvent: $.Event('compositionstart', {
+            type: 'compositionstart'
+        })
+    }));
+
+    this.$input.trigger($.Event('input', {
+        type: 'input',
+        originalEvent: $.Event('input', {
+            inputType: 'insertCompositionText',
+            isComposing: true,
+            data: eventsData.inputData // for ff
+        })
+    }));
+
+    this.$input.trigger($.Event('keyup', {
+        key: 'Process',
+        code: eventsData.keyDownCode,
+        originalEvent: $.Event('keyup', {
+            key: 'Process',
+            code: eventsData.keyDownCode,
+        })
+    }));
+
+    this.$input.trigger($.Event('compositionend', {
+        originalEvent: $.Event('compositionend', {
+            data: eventsData.compositionEndData // for msie
+        })
+    }));
+};
 
 const setupModule = {
     beforeEach: function() {
@@ -664,6 +705,17 @@ module('Keyboard navigation', setupModule, () => {
         this.keyboard.press('esc');
         assert.notOk(this.keyboard.event.isDefaultPrevented(), 'event should not be prevented');
     });
+
+    QUnit.test('command+v should not be prevented (T988724)', function(assert) {
+        if(!devices.real().mac) {
+            assert.ok(true, 'Test is actual only for mac');
+            return;
+        }
+
+        this.keyboard.keyDown('v', { metaKey: true });
+
+        assert.strictEqual(this.keyboard.event.isDefaultPrevented(), false, 'keydown event is not prevented');
+    });
 });
 
 module('Events', setupModule, () => {
@@ -682,6 +734,24 @@ module('Events', setupModule, () => {
 
         this.pointer.wheel(-10);
         assert.strictEqual(this.$input.val(), 'October 10 2012', 'decrement works');
+    });
+
+    test('Change date part by mouse wheel after clicking on stubs before the value part', function(assert) {
+        this.instance.option('displayFormat', '\'stub\'dd/MM/yyyy');
+        this.keyboard.caret(2);
+        this.$input.trigger('dxclick');
+
+        this.pointer.wheel(10);
+        assert.strictEqual(this.$input.val(), 'stub11/10/2012', 'value updated');
+    });
+
+    test('Change date part by mouse wheel after clicking on stubs after the value part', function(assert) {
+        this.instance.option('displayFormat', 'dd/MM/yyyy\'stub\'');
+        this.keyboard.caret(12);
+        this.$input.trigger('dxclick');
+
+        this.pointer.wheel(10);
+        assert.strictEqual(this.$input.val(), '10/10/2013stub', 'value updated');
     });
 
     test('it should not be possible to drag text in the editor', function(assert) {
@@ -885,6 +955,58 @@ module('Search', setupModule, () => {
             assert.notOk(true, 'Infinite loop detected');
         }
     });
+
+    test('Typing an non-digital IME composition should not ignore mask rules (T905190)', function(assert) {
+        this.instance.option('displayFormat', 'yyyy/MM/dd');
+
+        this.keyboard.caret({ start: 0, end: 4 });
+
+        this.$input.val('f/10/10');
+
+        const eventsData = {
+            keyDownCode: 'KeyF',
+            inputData: 'f',
+            compositionEndData: '分'
+        };
+
+        simulateIMEInput.call(this, eventsData);
+
+        assert.strictEqual(this.$input.val(), '2012/10/10', 'year was not changed');
+    });
+
+
+    test('Typing an digital IME composition should not ignore mask rules (T905190)', function(assert) {
+        this.instance.option('displayFormat', 'yyyy/MM/dd');
+
+        this.keyboard.caret({ start: 0, end: 4 });
+
+        const eventsData = {
+            keyDownCode: 'Digit5',
+            inputData: '5',
+            compositionEndData: '5'
+        };
+
+        simulateIMEInput.call(this, eventsData);
+        simulateIMEInput.call(this, eventsData);
+        simulateIMEInput.call(this, eventsData);
+        simulateIMEInput.call(this, eventsData);
+        simulateIMEInput.call(this, eventsData);
+        simulateIMEInput.call(this, eventsData);
+
+        assert.strictEqual(this.$input.val(), '5555/05/05', 'year was changed');
+    });
+
+
+    test('Pasting incorrect value to the date part should not ignore mask rules', function(assert) {
+        this.instance.option('displayFormat', 'yyyy/MM/dd');
+
+        this.keyboard
+            .caret({ start: 0, end: 4 })
+            .paste('555555')
+            .change();
+
+        assert.strictEqual(this.$input.val(), '2012/10/10', 'year was not changed');
+    });
 });
 
 module('Empty dateBox', {
@@ -993,19 +1115,41 @@ module('Empty dateBox', {
         assert.strictEqual(this.$input.val(), '', 'value is correct');
     });
 
-    test('navigation keys should do nothing in an empty datebox', function(assert) {
-        this.keyboard.press('home');
-        this.keyboard.press('end');
-        this.keyboard.press('del');
-        this.keyboard.press('backspace');
-        this.keyboard.press('esc');
-        this.keyboard.press('left');
-        this.keyboard.press('right');
-        this.keyboard.press('enter');
+    [
+        'home',
+        'end',
+        'del',
+        'backpace',
+        'esc',
+        'left',
+        'right',
+        'enter'
+    ].forEach((key) => {
+        test(`${key} key should do nothing in an empty datebox`, function(assert) {
+            this.keyboard.press(key);
 
-        assert.deepEqual(this.instance.option('value'), null, 'value is good');
-        assert.deepEqual(this.$input.val(), '', 'text is good');
-        assert.deepEqual(this.keyboard.caret(), { start: 0, end: 0 }, 'caret is good');
+            assert.deepEqual(this.instance.option('value'), null, 'value is good');
+            assert.deepEqual(this.$input.val(), '', 'text is good');
+            assert.deepEqual(this.keyboard.caret(), { start: 0, end: 0 }, 'caret is good');
+        });
+    });
+
+    [
+        'space',
+        'spaceIE' // IE11 support (T972456)
+    ].forEach((key) => {
+        test(`${key} keydown event should be prevented`, function(assert) {
+            if(devices.real().deviceType !== 'desktop') {
+                assert.ok(true, 'test does not actual for mobile devices');
+                return;
+            }
+
+            const value = new Date(2020, 5, 5);
+            this.instance.option({ value });
+            this.keyboard.keyDown(key);
+
+            assert.ok(this.keyboard.event.isDefaultPrevented(), `${key} key keydown prevented`);
+        });
     });
 });
 
@@ -1029,9 +1173,21 @@ module('Options changed', setupModule, () => {
         assert.strictEqual(this.$input.val(), 'October 10 2012', 'date is not changed on mouse wheel');
     });
 
+    test('Value should not contain time after value change if type is "date" when maskBehavior is enabled (T895922)', function(assert) {
+        this.keyboard
+            .focus()
+            .press('down')
+            .change();
+
+        const expectedValue = new Date(2012, 8, 10, 0, 0, 0);
+
+        assert.deepEqual(this.instance.option('value'), expectedValue, 'there is no time in the value');
+    });
+
     test('ValueChanged event should be fired after input clearing undo (T878918)', function(assert) {
         const valueChangedHandler = sinon.spy();
         const date = this.instance.option('value');
+        date.setHours(0, 0, 0, 0);
         this.instance.option('onValueChanged', valueChangedHandler);
 
         this.$input

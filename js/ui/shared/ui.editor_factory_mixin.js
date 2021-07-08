@@ -244,7 +244,7 @@ const EditorFactoryMixin = (function() {
     const createEditorCore = function(that, options) {
         const $editorElement = $(options.editorElement);
         if(options.editorName && options.editorOptions && $editorElement[options.editorName]) {
-            if(options.editorName === 'dxCheckBox') {
+            if(options.editorName === 'dxCheckBox' || options.editorName === 'dxSwitch') {
                 if(!options.isOnForm) {
                     $editorElement.addClass(that.addWidgetPrefix(CHECKBOX_SIZE_CLASS));
                     $editorElement.parent().addClass(EDITOR_INLINE_BLOCK);
@@ -258,7 +258,16 @@ const EditorFactoryMixin = (function() {
             }
 
             if(options.editorName === 'dxDateBox') {
-                $editorElement.dxDateBox('instance').registerKeyHandler('enter', () => true);
+                const dateBox = $editorElement.dxDateBox('instance');
+                const defaultEnterKeyHandler = dateBox._supportedKeys()['enter'];
+
+                dateBox.registerKeyHandler('enter', (e) => {
+                    if(dateBox.option('opened')) {
+                        defaultEnterKeyHandler(e);
+                    }
+
+                    return true;
+                });
             }
 
             if(options.editorName === 'dxTextArea') {

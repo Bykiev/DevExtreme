@@ -54,16 +54,10 @@ const Tabs = CollectionWidget.inherit({
 
     _getDefaultOptions: function() {
         return extend(this.callBase(), {
-
-
             hoverStateEnabled: true,
-
             showNavButtons: true,
-
             scrollByContent: true,
-
             scrollingEnabled: true,
-
             selectionMode: 'single',
 
             /**
@@ -72,13 +66,14 @@ const Tabs = CollectionWidget.inherit({
              * @default true
             */
 
-
             activeStateEnabled: true,
             selectionRequired: false,
             selectOnFocus: true,
             loopItemFocus: false,
             useInkRipple: false,
-            badgeExpr: function(data) { return data ? data.badge : undefined; }
+            badgeExpr: function(data) { return data ? data.badge : undefined; },
+            _itemAttributes: { role: 'tab' },
+
             /**
             * @name dxTabsItem
             * @inherits CollectionWidgetItem
@@ -149,9 +144,8 @@ const Tabs = CollectionWidget.inherit({
                 }
 
                 const $iconElement = getImageContainer(data.icon);
-
-                $container.wrapInner($('<span>').addClass(TABS_ITEM_TEXT_CLASS));
                 $iconElement && $iconElement.prependTo($container);
+                $container.wrapInner($('<span>').addClass(TABS_ITEM_TEXT_CLASS));
             }).bind(this), ['text', 'html', 'icon'], this.option('integrationOptions.watchMethod'))
         });
     },
@@ -182,7 +176,6 @@ const Tabs = CollectionWidget.inherit({
     _initMarkup: function() {
         this._deferredTemplates = [];
         this.callBase();
-        this.setAria('role', 'tab', this.itemElements());
 
         this.option('useInkRipple') && this._renderInkRipple();
 

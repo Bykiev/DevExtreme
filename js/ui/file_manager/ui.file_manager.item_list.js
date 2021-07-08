@@ -1,4 +1,5 @@
 import { extend } from '../../core/utils/extend';
+import { when } from '../../core/utils/deferred';
 import { name as dblClickName } from '../../events/double_click';
 import { addNamespace } from '../../events/utils';
 import eventsEngine from '../../events/core/events_engine';
@@ -15,12 +16,14 @@ class FileManagerItemListBase extends Widget {
 
     _init() {
         this._initActions();
+
+        this._lockFocusedItemProcessing = false;
+        this._focusedItemKey = this.option('focusedItemKey');
+
         super._init();
     }
 
     _initMarkup() {
-        this._initActions();
-
         this.$element().addClass(FILE_MANAGER_FILES_VIEW_CLASS);
 
         const dblClickEventName = addNamespace(dblClickName, FILE_MANAGER_ITEM_LIST_ITEM_OPEN_EVENT_NAMESPACE);
@@ -34,7 +37,8 @@ class FileManagerItemListBase extends Widget {
             onError: this._createActionByOption('onError'),
             onSelectionChanged: this._createActionByOption('onSelectionChanged'),
             onFocusedItemChanged: this._createActionByOption('onFocusedItemChanged'),
-            onSelectedItemOpened: this._createActionByOption('onSelectedItemOpened')
+            onSelectedItemOpened: this._createActionByOption('onSelectedItemOpened'),
+            onContextMenuShowing: this._createActionByOption('onContextMenuShowing')
         };
     }
 
@@ -49,7 +53,8 @@ class FileManagerItemListBase extends Widget {
             onError: null,
             onSelectionChanged: null,
             onFocusedItemChanged: null,
-            onSelectedItemOpened: null
+            onSelectedItemOpened: null,
+            onContextMenuShowing: null
         });
     }
 
@@ -67,12 +72,15 @@ class FileManagerItemListBase extends Widget {
                 this._setSelectedItemKeys(args.value);
                 break;
             case 'focusedItemKey':
-                this._setFocusedItemKey(args.value);
+                if(!this._lockFocusedItemProcessing) {
+                    this._setFocusedItemKey(args.value);
+                }
                 break;
             case 'onError':
             case 'onSelectedItemOpened':
             case 'onSelectionChanged':
             case 'onFocusedItemChanged':
+            case 'onContextMenuShowing':
                 this._actions[name] = this._createActionByOption(name);
                 break;
             default:
@@ -81,16 +89,22 @@ class FileManagerItemListBase extends Widget {
     }
 
     _getItems() {
-        const itemsGetter = this.option('getItems');
-        const itemsResult = itemsGetter ? itemsGetter() : [];
-
-        return itemsResult.done(itemInfos => {
+        return this._getItemsInternal().done(itemInfos => {
             this._itemCount = itemInfos.length;
+            if(this._itemCount === 0) {
+                this._resetFocus();
+            }
 
             const parentDirectoryItem = this._findParentDirectoryItem(itemInfos);
             this._hasParentDirectoryItem = !!parentDirectoryItem;
             this._parentDirectoryItemKey = parentDirectoryItem ? parentDirectoryItem.fileItem.key : null;
         });
+    }
+
+    _getItemsInternal() {
+        const itemsGetter = this.option('getItems');
+        const itemsResult = itemsGetter ? itemsGetter() : [];
+        return when(itemsResult);
     }
 
     _raiseOnError(error) {
@@ -107,6 +121,10 @@ class FileManagerItemListBase extends Widget {
 
     _raiseSelectedItemOpened(fileItemInfo) {
         this._actions.onSelectedItemOpened({ fileItemInfo });
+    }
+
+    _raiseContextMenuShowing() {
+        this._actions.onContextMenuShowing();
     }
 
     _tryRaiseSelectionChanged({ selectedItemInfos, selectedItems, selectedItemKeys, currentSelectedItemKeys, currentDeselectedItemKeys }) {
@@ -126,6 +144,24 @@ class FileManagerItemListBase extends Widget {
             currentDeselectedItemKeys = this._filterOutParentDirectoryKey(currentDeselectedItemKeys, true);
             this._raiseSelectionChanged({ selectedItemInfos, selectedItems, selectedItemKeys, currentSelectedItemKeys, currentDeselectedItemKeys });
         }
+    }
+
+    _onFocusedItemChanged(args) {
+        if(this._focusedItemKey === args.itemKey) {
+            return;
+        }
+
+        this._focusedItemKey = args.itemKey;
+
+        this._lockFocusedItemProcessing = true;
+        this.option('focusedItemKey', args.itemKey);
+        this._lockFocusedItemProcessing = false;
+
+        this._raiseFocusedItemChanged(args);
+    }
+
+    _resetFocus() {
+
     }
 
     _getItemThumbnail(fileInfo) {
@@ -162,8 +198,8 @@ class FileManagerItemListBase extends Widget {
         return devices.real().deviceType === 'desktop';
     }
 
-    _showContextMenu(items, element, offset) {
-        this._contextMenu.showAt(items, element, offset);
+    _showContextMenu(items, element, offset, targetFileItem) {
+        this._contextMenu.showAt(items, element, offset, targetFileItem);
     }
 
     get _contextMenu() {

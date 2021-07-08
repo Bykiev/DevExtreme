@@ -176,13 +176,9 @@ QUnit.module('scroll move');
 QUnit.test('dxscroll fired on pointer move', function(assert) {
     let fired = 0;
     let args;
-    let initEventData; // eslint-disable-line no-unused-vars
     let moveEventData;
 
     const $scrollable = $('#scrollable')
-        .on(scrollEvents.init, function(e) {
-            initEventData = eventUtils.eventData(e.originalEvent);
-        })
         .on(scrollEvents.move, function(e) {
             args = e;
             fired++;
@@ -484,7 +480,7 @@ QUnit.test('dxscrollwheel did not prevent event', function(assert) {
     QUnit.module('wheel locker', moduleConfig);
 
     const wheelMove = function($element, shiftKey) {
-        pointerMock($element).start().wheel(20, shiftKey);
+        pointerMock($element).start().wheel(20, { shiftKey });
     };
 
     const WHEEL_UNLOCK_TIMEOUT = 400;

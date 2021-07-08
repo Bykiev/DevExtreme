@@ -381,10 +381,18 @@ QUnit.module('Toolbar', moduleConfig, () => {
         });
         this.clock.tick(400);
 
-        const $elements = this.wrapper.getToolbarElements();
-        assert.equal($elements.length, 4, 'general toolbar has elements');
+        let $elements = this.wrapper.getAllItemsOfToolbar();
+        assert.equal($elements.length, 8, 'general toolbar has elements');
+        assert.strictEqual($elements.eq(4).text(), 'Move to', 'move is rendered in new position');
+        assert.ok($elements.eq(4).is(`.${Consts.DISABLED_STATE_CLASS}`), 'move button is disabled');
 
-        assert.notStrictEqual($elements.eq(2).text().indexOf('Move'), -1, 'move is rendered in new position');
+        fileManagerInstance.option('toolbar.items[4].visible', undefined);
+        this.clock.tick(400);
+
+        $elements = this.wrapper.getAllItemsOfToolbar();
+        assert.equal($elements.length, 8, 'general toolbar has elements');
+        assert.strictEqual($elements.eq(4).text(), 'Move to', 'move is rendered');
+        assert.ok($elements.eq(4).is(`.${Consts.DISABLED_STATE_CLASS}`), 'move button can be disabled even if its "visible" property manually not set');
 
         const $item = this.wrapper.findDetailsItem('File 1.txt');
         $item.trigger('dxclick');
@@ -408,8 +416,7 @@ QUnit.module('Toolbar', moduleConfig, () => {
 
         $dropDownButton.find(`.${Consts.BUTTON_CLASS}`).trigger('dxclick');
         this.clock.tick(400);
-        let detailsViewSelector = this.wrapper.getToolbarViewSwitcherListItem(0);
-        $(detailsViewSelector).trigger('dxclick');
+        this.wrapper.getToolbarViewSwitcherListItem(0).trigger('dxclick');
         this.clock.tick(400);
 
         $dropDownButton = this.wrapper.getToolbarDropDownButton();
@@ -432,8 +439,7 @@ QUnit.module('Toolbar', moduleConfig, () => {
 
         $dropDownButton.find(`.${Consts.BUTTON_CLASS}`).trigger('dxclick');
         this.clock.tick(400);
-        detailsViewSelector = this.wrapper.getToolbarViewSwitcherListItem(1);
-        $(detailsViewSelector).trigger('dxclick');
+        this.wrapper.getToolbarViewSwitcherListItem(1).trigger('dxclick');
         this.clock.tick(400);
 
         $dropDownButton = this.wrapper.getToolbarDropDownButton();
@@ -940,6 +946,192 @@ QUnit.module('Toolbar', moduleConfig, () => {
         assert.strictEqual($generalToolbarElements.eq(2).find(`.${Consts.BUTTON_TEXT_CLASS}:visible`).text(), 'item with long name 2', 'third general element correct');
 
         renderer.fn.width = originalWidth;
+    });
+
+    test('buttons without text have tooltip', function(assert) {
+        createFileManager(true);
+        this.clock.tick(400);
+
+        const $refresh = this.wrapper.getToolbarButton('Refresh');
+        assert.strictEqual($refresh.length, 2, 'refresh button exists');
+        assert.strictEqual($refresh.eq(0).attr('title'), 'Refresh', 'refresh button has tooltip');
+        assert.strictEqual($refresh.eq(1).attr('title'), 'Refresh', 'refresh button has tooltip');
+
+        const $showNavPane = this.wrapper.getGeneralToolbarElements().eq(0);
+        assert.strictEqual($showNavPane.attr('title'), 'Toggle navigation pane', 'showNavPane button has tooltip');
+    });
+
+    test('buttons in compact mode have tooltips', function(assert) {
+        createFileManager(true);
+        this.clock.tick(400);
+
+        this.wrapper.getInstance().option('permissons.download', true);
+        this.clock.tick(400);
+
+        const toolbar = this.wrapper.getInstance()._toolbar;
+        toolbar._toolbarHasItemsOverflow = () => true;
+        toolbar.update();
+        this.clock.tick(800);
+
+        const $generalElements = this.wrapper.getGeneralToolbarElements();
+        assert.strictEqual($generalElements.eq(1).attr('title'), 'New directory', 'create button has tooltip');
+        assert.strictEqual($generalElements.eq(2).attr('title'), 'Upload files', 'upload button has tooltip');
+
+        const $item = this.wrapper.findThumbnailsItem('File 1.txt');
+        $item.trigger('dxclick');
+        this.clock.tick(400);
+
+        const $selectionElements = this.wrapper.getFileSelectionToolbarElements();
+        assert.strictEqual($selectionElements.eq(0).attr('title'), 'Download', 'download button has tooltip');
+        assert.strictEqual($selectionElements.eq(1).attr('title'), 'Move to', 'move button has tooltip');
+        assert.strictEqual($selectionElements.eq(2).attr('title'), 'Copy to', 'copy button has tooltip');
+        assert.strictEqual($selectionElements.eq(3).attr('title'), 'Rename', 'rename button has tooltip');
+        assert.strictEqual($selectionElements.eq(4).attr('title'), 'Delete', 'delete button has tooltip');
+        assert.strictEqual($selectionElements.eq(5).attr('title'), 'Clear selection', 'clear selection button has tooltip');
+    });
+
+    test('file toolbar items visibility can be updated on selectionCahnged event (T926161)', function(assert) {
+        createFileManager();
+        this.clock.tick(400);
+
+        const fileManager = this.wrapper.getInstance();
+        fileManager.option({
+            itemView: {
+                showFolders: true
+            },
+            toolbar: {
+                fileSelectionItems: [
+                    {
+                        name: 'copy',
+                        visible: true
+                    },
+                    {
+                        name: 'rename',
+                        visible: true
+                    }
+                ]
+            },
+            onSelectionChanged: function(e) {
+                const isFoldersPresent = e.selectedItems.some(item => item.name.indexOf('Folder') !== -1);
+                e.component.option('toolbar.fileSelectionItems[1].visible', !isFoldersPresent);
+            }
+        });
+        this.clock.tick(400);
+
+        this.wrapper.findDetailsItem('File 1.txt').trigger('dxclick');
+        this.clock.tick(400);
+
+        let $toolbar = this.wrapper.getToolbar();
+        let $elements = this.wrapper.getToolbarElements();
+        assert.ok($toolbar.hasClass(Consts.FILE_TOOLBAR_CLASS), 'file toolbar displayed');
+        assert.equal($elements.length, 2, 'has two buttons');
+        assert.strictEqual($elements.eq(0).text().indexOf('Move'), -1, 'move displayed');
+        assert.strictEqual($elements.eq(1).text().indexOf('Copy'), -1, 'copy displayed');
+
+        this.wrapper.findDetailsItem('Folder 1').trigger('dxclick');
+        this.clock.tick(400);
+
+        $toolbar = this.wrapper.getToolbar();
+        $elements = this.wrapper.getToolbarElements();
+        assert.ok($toolbar.hasClass(Consts.FILE_TOOLBAR_CLASS), 'file toolbar displayed');
+        assert.equal($elements.length, 1, 'has one button');
+        assert.strictEqual($elements.eq(0).text().indexOf('Move'), -1, 'move displayed');
+
+        this.wrapper.findDetailsItem('File 2.jpg').trigger('dxclick');
+        this.clock.tick(400);
+
+        $toolbar = this.wrapper.getToolbar();
+        $elements = this.wrapper.getToolbarElements();
+        assert.ok($toolbar.hasClass(Consts.FILE_TOOLBAR_CLASS), 'file toolbar displayed');
+        assert.equal($elements.length, 2, 'has two buttons');
+        assert.strictEqual($elements.eq(0).text().indexOf('Move'), -1, 'move displayed');
+        assert.strictEqual($elements.eq(1).text().indexOf('Copy'), -1, 'copy displayed');
+    });
+
+    test('default items missed options (T948755)', function(assert) {
+        createFileManager(false);
+        this.clock.tick(400);
+
+        const customCssClass = 'custom-class';
+        const customText = 'customText';
+        const customIcon = 'upload';
+        const buttonOptions = { text: customText, icon: customIcon, stylingMode: 'outlined' };
+        const dropDownButtonOptions = { stylingMode: 'outlined' };
+        const fileManagerInstance = $('#fileManager').dxFileManager('instance');
+        fileManagerInstance.option('toolbar', {
+            items: [{
+                name: 'create',
+                cssClass: customCssClass
+            }, {
+                name: 'refresh',
+                location: 'before',
+                showText: 'always',
+                cssClass: customCssClass,
+                options: buttonOptions
+            }, {
+                name: 'separator',
+                cssClass: customCssClass
+            }, {
+                name: 'switchView',
+                location: 'before',
+                cssClass: customCssClass,
+                options: dropDownButtonOptions
+            }]
+        });
+        this.clock.tick(400);
+
+        const $elements = this.wrapper.getAllItemsOfToolbar();
+        assert.strictEqual($elements.length, 4, 'general toolbar has 4 elements');
+
+        assert.strictEqual($elements.eq(0).text(), 'New directory', 'create is rendered in the expexted position');
+        assert.ok($elements.eq(0).hasClass(customCssClass), 'create has custom css class');
+
+        assert.strictEqual($elements.eq(1).text(), customText, 'refresh is rendered in the expexted position with correct text option');
+        assert.ok($elements.eq(1).hasClass(customCssClass), 'refresh has custom css class');
+        assert.ok($elements.eq(1).hasClass(Consts.TOOLBAR_HAS_LARGE_ICON_CLASS), 'refresh has default css class');
+        assert.ok($elements.eq(1).find('.dx-icon').hasClass(Consts.UPLOAD_ICON_CLASS), 'refresh has correct icon option');
+        assert.ok($elements.eq(1).find(`.${Consts.BUTTON_CLASS}`).hasClass(Consts.BUTTON_OUTLINED_CLASS), 'refresh stylingMode option is applied');
+        assert.notOk($elements.eq(1).hasClass(Consts.TOOLBAR_ITEM_WITH_HIDDEN_TEXT_CLASS), 'refresh text is shown');
+
+        assert.strictEqual($elements.eq(2).find(`.${Consts.TOOLBAR_SEPARATOR_ITEM_CLASS}`).length, 1, 'separator is rendered in the expexted position and has default class');
+        assert.ok($elements.eq(2).hasClass(customCssClass), 'separator has custom css class');
+
+        assert.ok($elements.eq(3).hasClass(Consts.TOOLBAR_VIEWMODE_ITEM_CLASS), 'switchView is rendered in the expexted position and has default class');
+        assert.ok($elements.eq(3).hasClass(customCssClass), 'switchView has custom css class');
+        assert.ok($elements.eq(3).find(`.${Consts.BUTTON_CLASS}`).hasClass(Consts.BUTTON_OUTLINED_CLASS), 'switchView stylingMode option is applied');
+    });
+
+    test('default items forbidden options (T948755)', function(assert) {
+        createFileManager(false);
+        this.clock.tick(400);
+
+        const customClick = sinon.spy();
+        const customClick1 = sinon.spy();
+        const buttonOptions = { onClick: customClick };
+        const dropDownButtonOptions = { onItemClick: customClick1 };
+        const fileManagerInstance = $('#fileManager').dxFileManager('instance');
+        fileManagerInstance.option('toolbar', {
+            items: [{
+                name: 'refresh',
+                location: 'before',
+                showText: 'always',
+                options: buttonOptions
+            }, {
+                name: 'switchView',
+                location: 'before',
+                options: dropDownButtonOptions
+            }],
+            fileSelectionItems: []
+        });
+        this.clock.tick(400);
+
+        this.wrapper.getToolbarButton('Refresh').trigger('dxclick');
+        this.clock.tick(400);
+        assert.ok(customClick.notCalled, 'refresh has its default action');
+        this.wrapper.getToolbarDropDownButton().find(`.${Consts.BUTTON_CLASS}`).trigger('dxclick');
+        this.clock.tick(400);
+        this.wrapper.getToolbarViewSwitcherListItem(1).trigger('dxclick');
+        assert.ok(customClick1.notCalled, 'switchView has its default action');
     });
 
 });

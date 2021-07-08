@@ -5,6 +5,11 @@ import {
 } from '../core/element';
 
 import {
+    PaletteType,
+    PaletteExtensionModeType
+} from './palette';
+
+import {
     template
 } from '../core/templates/template';
 
@@ -19,7 +24,9 @@ import {
 import BaseWidget, {
     BaseWidgetOptions,
     BaseWidgetTooltip,
-    Font
+    Font,
+    WordWrapType,
+    VizTextOverflowType,
 } from './core/base_widget';
 
 export interface dxTreeMapOptions extends BaseWidgetOptions<dxTreeMap> {
@@ -45,7 +52,7 @@ export interface dxTreeMapOptions extends BaseWidgetOptions<dxTreeMap> {
      * @prevFileNamespace DevExpress.viz
      * @public
      */
-    colorizer?: { colorCodeField?: string, colorizeGroups?: boolean, palette?: Array<string> | 'Bright' | 'Default' | 'Harmony Light' | 'Ocean' | 'Pastel' | 'Soft' | 'Soft Pastel' | 'Vintage' | 'Violet' | 'Carmine' | 'Dark Moon' | 'Dark Violet' | 'Green Mist' | 'Soft Blue' | 'Material' | 'Office', paletteExtensionMode?: 'alternate' | 'blend' | 'extrapolate', range?: Array<number>, type?: 'discrete' | 'gradient' | 'none' | 'range' };
+    colorizer?: { colorCodeField?: string, colorizeGroups?: boolean, palette?: Array<string> | PaletteType, paletteExtensionMode?: PaletteExtensionModeType, range?: Array<number>, type?: 'discrete' | 'gradient' | 'none' | 'range' };
     /**
      * @docid dxTreeMapOptions.dataSource
      * @extends CommonVizDataSource
@@ -59,7 +66,7 @@ export interface dxTreeMapOptions extends BaseWidgetOptions<dxTreeMap> {
      * @prevFileNamespace DevExpress.viz
      * @public
      */
-    group?: { border?: { color?: string, width?: number }, color?: string, headerHeight?: number, hoverEnabled?: boolean, hoverStyle?: { border?: { color?: string, width?: number }, color?: string }, label?: { font?: Font, textOverflow?: 'ellipsis' | 'hide' | 'none', visible?: boolean }, selectionStyle?: { border?: { color?: string, width?: number }, color?: string } };
+    group?: { border?: { color?: string, width?: number }, color?: string, headerHeight?: number, hoverEnabled?: boolean, hoverStyle?: { border?: { color?: string, width?: number }, color?: string }, label?: { font?: Font, textOverflow?: VizTextOverflowType, visible?: boolean }, selectionStyle?: { border?: { color?: string, width?: number }, color?: string } };
     /**
      * @docid dxTreeMapOptions.hoverEnabled
      * @type boolean
@@ -225,7 +232,7 @@ export interface dxTreeMapOptions extends BaseWidgetOptions<dxTreeMap> {
      * @prevFileNamespace DevExpress.viz
      * @public
      */
-    tile?: { border?: { color?: string, width?: number }, color?: string, hoverStyle?: { border?: { color?: string, width?: number }, color?: string }, label?: { font?: Font, textOverflow?: 'ellipsis' | 'hide' | 'none', visible?: boolean, wordWrap?: 'normal' | 'breakWord' | 'none' }, selectionStyle?: { border?: { color?: string, width?: number }, color?: string } };
+    tile?: { border?: { color?: string, width?: number }, color?: string, hoverStyle?: { border?: { color?: string, width?: number }, color?: string }, label?: { font?: Font, textOverflow?: VizTextOverflowType, visible?: boolean, wordWrap?: WordWrapType }, selectionStyle?: { border?: { color?: string, width?: number }, color?: string } };
     /**
      * @docid dxTreeMapOptions.tooltip
      * @type object
@@ -251,7 +258,7 @@ export interface dxTreeMapTooltip extends BaseWidgetTooltip {
      * @type_function_param1_field2 valueText:string
      * @type_function_param1_field3 node:dxTreeMapNode
      * @type_function_param2 element:dxElement
-     * @type_function_return string|Node|jQuery
+     * @type_function_return string|Element|jQuery
      * @default undefined
      * @prevFileNamespace DevExpress.viz
      * @public

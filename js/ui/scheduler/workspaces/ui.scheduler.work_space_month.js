@@ -3,6 +3,7 @@ const noop = require('../../../core/utils/common').noop;
 const registerComponent = require('../../../core/component_registrator');
 const SchedulerWorkSpace = require('./ui.scheduler.work_space.indicator');
 const dateUtils = require('../../../core/utils/date');
+const getBoundingRect = require('../../../core/utils/position').getBoundingRect;
 const dateLocalization = require('../../../localization/date');
 
 const MONTH_CLASS = 'dx-scheduler-work-space-month';
@@ -80,7 +81,7 @@ const SchedulerWorkSpaceMonth = SchedulerWorkSpace.inherit({
         const DAYS_IN_WEEK = 7;
 
         let averageWidth = 0;
-        this._getCells().slice(0, DAYS_IN_WEEK).each((index, element) => averageWidth += element.getBoundingClientRect().width);
+        this._getCells().slice(0, DAYS_IN_WEEK).each((index, element) => averageWidth += getBoundingRect(element).width);
 
         return averageWidth / DAYS_IN_WEEK;
     },
@@ -163,8 +164,8 @@ const SchedulerWorkSpaceMonth = SchedulerWorkSpace.inherit({
         this.callBase(options);
     },
 
-    _getCellText: function(rowIndex, cellIndex) {
-        if(this.option('groupByDate') && this._getGroupCount()) {
+    _getCellText(rowIndex, cellIndex) {
+        if(this.isGroupedByDate()) {
             cellIndex = Math.floor(cellIndex / this._getGroupCount());
         } else {
             cellIndex = cellIndex % this._getCellCount();
@@ -221,7 +222,7 @@ const SchedulerWorkSpaceMonth = SchedulerWorkSpace.inherit({
         return !dateUtils.dateInRange(cellDate, this._minVisibleDate, this._maxVisibleDate, 'date');
     },
 
-    needRenderDateTimeIndication: function() {
+    isIndicationAvailable: function() {
         return false;
     },
 
@@ -302,7 +303,11 @@ const SchedulerWorkSpaceMonth = SchedulerWorkSpace.inherit({
         return false;
     },
 
-    scrollToTime: noop
+    scrollToTime: noop,
+
+    _getRowCountWithAllDayRows: function() {
+        return this._getRowCount();
+    }
 });
 
 registerComponent('dxSchedulerWorkSpaceMonth', SchedulerWorkSpaceMonth);

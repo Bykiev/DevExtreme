@@ -57,13 +57,13 @@ export default class FileManagerNotificationControl extends Widget {
 
         const contentRenderer = this.option('contentTemplate');
         if(isFunction(contentRenderer)) {
-            contentRenderer($drawerContent);
+            contentRenderer($drawerContent, this);
         }
     }
 
     tryShowProgressPanel() {
         const promise = new Deferred();
-        if(this._actionProgressStatus === 'default') {
+        if(this._actionProgressStatus === 'default' || this._isProgressDrawerOpened()) {
             return promise.resolve().promise();
         }
 

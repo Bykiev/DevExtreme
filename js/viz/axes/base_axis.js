@@ -203,7 +203,7 @@ function validateAxisOptions(options) {
         labelPosition = position;
     }
 
-    if(!labelOptions.userAlignment) {
+    if(labelOptions.alignment !== CENTER && !labelOptions.userAlignment) {
         labelOptions.alignment = {
             [TOP]: CENTER,
             [BOTTOM]: CENTER,
@@ -365,17 +365,19 @@ Axis.prototype = {
         return false;
     },
 
-    getCustomPositionAxis: _noop,
+    getOrthogonalAxis: _noop,
 
     getCustomPosition: _noop,
 
     getCustomBoundaryPosition: _noop,
 
+    resolveOverlappingForCustomPositioning: _noop,
+
     hasCustomPosition() {
         return false;
     },
 
-    customPositionIsBoundaryOppositeAxis() {
+    customPositionIsBoundaryOrthogonalAxis() {
         return false;
     },
 
@@ -500,7 +502,6 @@ Axis.prototype = {
         let swap;
         let startCategoryIndex;
         let endCategoryIndex;
-        const min = range.minVisible;
 
         if(!isContinuous) {
             if(isDefined(startValue) && isDefined(endValue)) {
@@ -509,7 +510,7 @@ Axis.prototype = {
                 startCategoryIndex = inArray(isDefined(parsedStartValue) ? parsedStartValue.valueOf() : undefined, categories);
                 endCategoryIndex = inArray(isDefined(parsedEndValue) ? parsedEndValue.valueOf() : undefined, categories);
                 if(startCategoryIndex === -1 || endCategoryIndex === -1) {
-                    return { from: 0, to: 0 };
+                    return { from: 0, to: 0, outOfCanvas: true };
                 }
                 if(startCategoryIndex > endCategoryIndex) {
                     swap = endValue;
@@ -522,9 +523,6 @@ Axis.prototype = {
         if(isDefined(startValue)) {
             startValue = this.validateUnit(startValue, 'E2105', 'strip');
             start = this._getTranslatedCoord(startValue, -1);
-            if(!isDefined(start) && isContinuous) {
-                start = (startValue < min) ? canvasStart : canvasEnd;
-            }
         } else {
             start = canvasStart;
         }
@@ -532,14 +530,17 @@ Axis.prototype = {
         if(isDefined(endValue)) {
             endValue = this.validateUnit(endValue, 'E2105', 'strip');
             end = this._getTranslatedCoord(endValue, 1);
-            if(!isDefined(end) && isContinuous) {
-                end = (endValue > min) ? canvasEnd : canvasStart;
-            }
         } else {
             end = canvasEnd;
         }
 
-        return (start < end) ? { from: start, to: end } : { from: end, to: start };
+        const stripPosition = (start < end) ? { from: start, to: end } : { from: end, to: start };
+        const visibleArea = this.getVisibleArea();
+
+        if(stripPosition.from <= visibleArea[0] && stripPosition.to <= visibleArea[0] || stripPosition.from >= visibleArea[1] && stripPosition.to >= visibleArea[1]) {
+            stripPosition.outOfCanvas = true;
+        }
+        return stripPosition;
     },
 
     _getStripGraphicAttributes: function(fromPoint, toPoint) {
@@ -597,6 +598,8 @@ Axis.prototype = {
 
     _adjustLabels: function(offset) {
         const that = this;
+        const options = that.getOptions();
+        const positionsAreConsistent = options.position === options.label.position;
         const maxSize = that._majorTicks.reduce(function(size, tick) {
             if(!tick.label) return size;
             const bBox = tick.labelRotationAngle ? vizUtils.rotateBBox(tick.labelBBox, [tick.labelCoords.x, tick.labelCoords.y], -tick.labelRotationAngle) : tick.labelBBox;
@@ -606,11 +609,11 @@ Axis.prototype = {
                 offset: _max(size.offset || 0, tick.labelOffset || 0)
             };
         }, {});
-        const additionalOffset = that._isHorizontal ? maxSize.height : maxSize.width;
+        const additionalOffset = positionsAreConsistent ? (that._isHorizontal ? maxSize.height : maxSize.width) : 0;
 
         that._adjustLabelsCoord(offset, maxSize.width);
 
-        return offset + additionalOffset + (additionalOffset && that._options.label.indentFromAxis) + maxSize.offset;
+        return offset + additionalOffset + (additionalOffset && that._options.label.indentFromAxis) + (positionsAreConsistent ? maxSize.offset : 0);
     },
 
     _getLabelAdjustedCoord: function(tick, offset, maxWidth) {
@@ -793,6 +796,13 @@ Axis.prototype = {
         const options = this._options;
         const discreteAxisDivisionMode = options.discreteAxisDivisionMode;
         this._tickOffset = +(discreteAxisDivisionMode !== 'crossLabels' || !discreteAxisDivisionMode);
+    },
+
+    resetApplyingAnimation: function(isFirstDrawing) {
+        this._resetApplyingAnimation = true;
+        if(isFirstDrawing) {
+            this._firstDrawing = true;
+        }
     },
 
     getMargins: function() {
@@ -1054,6 +1064,18 @@ Axis.prototype = {
         }
     },
 
+    _resolveLogarithmicOptionsForRange(range) {
+        const options = this._options;
+        if(options.type === constants.logarithmic) {
+            range.addRange({
+                allowNegatives: options.allowNegatives !== undefined ? options.allowNegatives : (range.min <= 0)
+            });
+            if(!isNaN(options.linearThreshold)) {
+                range.linearThreshold = options.linearThreshold;
+            }
+        }
+    },
+
     adjustViewport(businessRange) {
         const that = this;
         const options = that._options;
@@ -1110,7 +1132,7 @@ Axis.prototype = {
         !isDefined(result.min) && (result.min = result.minVisible);
         !isDefined(result.max) && (result.max = result.maxVisible);
         result.addRange({}); // controlValuesByVisibleBounds
-
+        that._resolveLogarithmicOptionsForRange(result);
 
         return result;
     },
@@ -1272,14 +1294,7 @@ Axis.prototype = {
             invert: options.inverted
         });
 
-        if(options.type === constants.logarithmic) {
-            that._seriesData.addRange({
-                allowNegatives: options.allowNegatives !== undefined ? options.allowNegatives : (range.min <= 0)
-            });
-            if(!isNaN(options.linearThreshold)) {
-                that._seriesData.linearThreshold = options.linearThreshold;
-            }
-        }
+        that._resolveLogarithmicOptionsForRange(that._seriesData);
 
         if(!isDiscrete) {
             if(!isDefined(that._seriesData.min) && !isDefined(that._seriesData.max)) {
@@ -1298,18 +1313,17 @@ Axis.prototype = {
             }
         }
 
-        that._seriesData.minVisible = that._seriesData.minVisible === undefined ? that._seriesData.min : that._seriesData.minVisible;
-        that._seriesData.maxVisible = that._seriesData.maxVisible === undefined ? that._seriesData.max : that._seriesData.maxVisible;
+        that._seriesData.minVisible = that._seriesData.minVisible ?? that._seriesData.min;
+        that._seriesData.maxVisible = that._seriesData.maxVisible ?? that._seriesData.max;
 
         if(!that.isArgumentAxis && options.showZero) {
             that._seriesData.correctValueZeroLevel();
         }
         that._seriesData.sortCategories(that.getCategoriesSorter(argCategories));
 
-        that._seriesData.breaks =
-            that._breaks = that._getScaleBreaks(options, that._seriesData, that._series, that.isArgumentAxis);
+        that._seriesData.userBreaks = that._getScaleBreaks(options, that._seriesData, that._series, that.isArgumentAxis);
 
-        that._translator.updateBusinessRange(that.adjustViewport(that._seriesData));
+        that._translator.updateBusinessRange(that._getViewportRange());
     },
 
     _addConstantLinesToRange(dataRange, minValueField, maxValueField) {
@@ -1406,7 +1420,7 @@ Axis.prototype = {
     estimateTickInterval: function(canvas) {
         const that = this;
         that.updateCanvas(canvas);
-        return that._tickInterval !== that._getTicks(that.adjustViewport(that._seriesData), _noop, true).tickInterval;
+        return that._tickInterval !== that._getTicks(that._getViewportRange(), _noop, true).tickInterval;
     },
 
     setTicks: function(ticks) {
@@ -1442,7 +1456,7 @@ Axis.prototype = {
             },
             options.minorTickInterval,
             options.minorTickCount,
-            that._breaks
+            that._initialBreaks
         );
     },
 
@@ -1488,7 +1502,7 @@ Axis.prototype = {
         const minInterval = !options.aggregationGroupWidth && !aggregationInterval && range.interval;
 
         const generateTicks = configureGenerator(options, aggregationGroupWidth, businessRange, that._getScreenDelta(), minInterval);
-        const tickInterval = generateTicks(aggregationInterval, true, minVisible, maxVisible, that._breaks).tickInterval;
+        const tickInterval = generateTicks(aggregationInterval, true, minVisible, maxVisible, that._seriesData?.breaks).tickInterval;
 
         if(options.type !== constants.discrete) {
             const min = useAllAggregatedPoints ? businessRange.min : minVisible;
@@ -1513,7 +1527,11 @@ Axis.prototype = {
                     minVisible: start,
                     maxVisible: end
                 }, that._series, that.isArgumentAxis);
-                ticks = generateTicks(tickInterval, false, start, end, breaks).ticks;
+                const filteredBreaks = that._filterBreaks(breaks, {
+                    minVisible: start,
+                    maxVisible: end
+                }, options.breakStyle);
+                ticks = generateTicks(tickInterval, false, start, end, filteredBreaks).ticks;
             }
         }
 
@@ -1537,9 +1555,11 @@ Axis.prototype = {
         that._isSynchronized = false;
         that.updateCanvas(canvas);
 
+        const range = that._getViewportRange();
+        that._initialBreaks = range.breaks = this._seriesData.breaks = that._filterBreaks(this._seriesData.userBreaks, range, options.breakStyle);
+
         that._estimatedTickInterval = that._getTicks(that.adjustViewport(this._seriesData), _noop, true).tickInterval; // tickInterval calculation
 
-        const range = that._getViewportRange();
         const margins = this._calculateValueMargins();
 
         range.addRange({
@@ -1603,19 +1623,17 @@ Axis.prototype = {
 
         that._ticksToRemove = Object.keys(majorTicksByValues)
             .map(k => majorTicksByValues[k]).concat(oldMinorTicks.slice(that._minorTicks.length, oldMinorTicks.length));
+        that._ticksToRemove.forEach(t => t.label?.removeTitle());
 
-        that._correctedBreaks = ticks.breaks;
-
+        if(ticks.breaks) {
+            that._seriesData.breaks = ticks.breaks;
+        }
         that._reinitTranslator(that._getViewportRange());
     },
 
     _reinitTranslator: function(range) {
         const that = this;
         const translator = that._translator;
-
-        if(that._correctedBreaks) {
-            range.breaks = that._correctedBreaks;
-        }
 
         if(that._isSynchronized) {
             return;
@@ -1666,6 +1684,11 @@ Axis.prototype = {
         return businessInterval;
     },
 
+    _getConvertIntervalCoefficient(intervalInPx, screenDelta) {
+        const ratioOfCanvasRange = this._translator.ratioOfCanvasRange();
+        return ratioOfCanvasRange / (ratioOfCanvasRange * screenDelta / (intervalInPx + screenDelta));
+    },
+
     _calculateValueMargins(ticks) {
         this._resetMargins();
         const that = this;
@@ -1676,7 +1699,7 @@ Axis.prototype = {
         const viewPort = that.getViewport();
         const screenDelta = that._getScreenDelta();
         const isDiscrete = (options.type || '').indexOf(constants.discrete) !== -1;
-        const valueMarginsEnabled = options.valueMarginsEnabled && !isDiscrete && !that.customPositionIsBoundaryOppositeAxis();
+        const valueMarginsEnabled = options.valueMarginsEnabled && !isDiscrete && !that.customPositionIsBoundaryOrthogonalAxis();
 
         const translator = that._translator;
 
@@ -1695,16 +1718,11 @@ Axis.prototype = {
             };
         }
 
-        function getConvertIntervalCoefficient(intervalInPx) {
-            const ratioOfCanvasRange = translator.ratioOfCanvasRange();
-            return ratioOfCanvasRange / (ratioOfCanvasRange * screenDelta / (intervalInPx + screenDelta));
-        }
-
         if(that.isArgumentAxis && margins.checkInterval) {
             rangeInterval = that._calculateRangeInterval(dataRange.interval);
             const pxInterval = translator.getInterval(rangeInterval);
             if(isFinite(pxInterval)) {
-                interval = Math.ceil(pxInterval / (2 * getConvertIntervalCoefficient(pxInterval)));
+                interval = Math.ceil(pxInterval / (2 * that._getConvertIntervalCoefficient(pxInterval, screenDelta)));
             } else {
                 rangeInterval = 0;
             }
@@ -1780,7 +1798,7 @@ Axis.prototype = {
 
             if(minTickPadding > minPadding || maxTickPadding > maxPadding) {
                 const commonPadding = (maxTickPadding + minTickPadding);
-                const coeff = getConvertIntervalCoefficient(commonPadding);
+                const coeff = that._getConvertIntervalCoefficient(commonPadding, screenDelta);
                 if(minTickPadding >= minPadding) {
                     minValue = ticks[0].value;
                 }
@@ -1805,36 +1823,58 @@ Axis.prototype = {
             }
         }
 
-        function correctZeroLevel(minPoint, maxPoint) {
+        const { correctedMin, correctedMax, start, end } = that.getCorrectedValuesToZero(minValue, maxValue);
+        minPadding = start ?? minPadding;
+        maxPadding = end ?? maxPadding;
+
+        return {
+            startPadding: translator.isInverted() ? maxPadding : minPadding,
+            endPadding: translator.isInverted() ? minPadding : maxPadding,
+
+            minValue: correctedMin ?? minValue,
+            maxValue: correctedMax ?? maxValue,
+
+            interval: rangeInterval,
+            isSpacedMargin: minPadding === maxPadding && minPadding !== 0
+        };
+    },
+
+    getCorrectedValuesToZero(minValue, maxValue) {
+        const that = this;
+        const translator = that._translator;
+        const canvasStartEnd = that._getCanvasStartEnd();
+        const dataRange = that._getViewportRange();
+        const screenDelta = that._getScreenDelta();
+        const options = that._options;
+        let start;
+        let end;
+        let correctedMin;
+        let correctedMax;
+        const correctZeroLevel = (minPoint, maxPoint) => {
             const minExpectedPadding = _abs(canvasStartEnd.start - minPoint);
             const maxExpectedPadding = _abs(canvasStartEnd.end - maxPoint);
 
-            const coeff = getConvertIntervalCoefficient(minExpectedPadding + maxExpectedPadding);
+            const coeff = that._getConvertIntervalCoefficient(minExpectedPadding + maxExpectedPadding, screenDelta);
 
-            minPadding = minExpectedPadding / coeff;
-            maxPadding = maxExpectedPadding / coeff;
-        }
-
-        if(!that.isArgumentAxis) {
+            start = minExpectedPadding / coeff;
+            end = maxExpectedPadding / coeff;
+        };
+        if(!that.isArgumentAxis && options.dataType !== 'datetime') {
             if(minValue * dataRange.min <= 0 && minValue * dataRange.minVisible <= 0) {
                 correctZeroLevel(translator.translate(0), translator.translate(maxValue));
-                minValue = 0;
+                correctedMin = 0;
             }
 
             if(maxValue * dataRange.max <= 0 && maxValue * dataRange.maxVisible <= 0) {
                 correctZeroLevel(translator.translate(minValue), translator.translate(0));
-                maxValue = 0;
+                correctedMax = 0;
             }
         }
         return {
-            startPadding: this._translator.isInverted() ? maxPadding : minPadding,
-            endPadding: this._translator.isInverted() ? minPadding : maxPadding,
-
-            minValue,
-            maxValue,
-
-            interval: rangeInterval,
-            isSpacedMargin: minPadding === maxPadding && minPadding !== 0
+            start: isFinite(start) ? start : null,
+            end: isFinite(end) ? end : null,
+            correctedMin,
+            correctedMax
         };
     },
 
@@ -2017,6 +2057,10 @@ Axis.prototype = {
         initTickCoords(that._minorTicks);
         initTickCoords(that._boundaryTicks);
 
+        if(this._resetApplyingAnimation && !this._firstDrawing) {
+            that._resetStartCoordinates();
+        }
+
         cleanUpInvalidTicks(that._majorTicks);
         cleanUpInvalidTicks(that._minorTicks);
         cleanUpInvalidTicks(that._boundaryTicks);
@@ -2049,11 +2093,22 @@ Axis.prototype = {
         if(!that._translator.getBusinessRange().isEmpty()) {
             that._firstDrawing = false;
         }
+        this._resetApplyingAnimation = false;
     },
 
     prepareAnimation() {
         const that = this;
         const action = 'saveCoords';
+        callAction(that._majorTicks, action);
+        callAction(that._minorTicks, action);
+        callAction(that._insideConstantLines, action);
+        callAction(that._outsideConstantLines, action);
+        callAction(that._strips, action);
+    },
+
+    _resetStartCoordinates() {
+        const that = this;
+        const action = 'resetCoordinates';
         callAction(that._majorTicks, action);
         callAction(that._minorTicks, action);
         callAction(that._insideConstantLines, action);
@@ -2150,7 +2205,7 @@ Axis.prototype = {
 
         const viewPort = that.getViewport();
 
-        that._breaks = that._getScaleBreaks(that._options, {
+        that._seriesData.userBreaks = that._getScaleBreaks(that._options, {
             minVisible: viewPort.startValue,
             maxVisible: viewPort.endValue
         }, that._series, that.isArgumentAxis);
@@ -2630,14 +2685,16 @@ Axis.prototype = {
     _getScreenDelta: function() {
         const that = this;
         const canvas = that._getCanvasStartEnd();
-        const breaks = that._breaks;
-        const breaksLength = breaks ? breaks.length : 0;
+        const breaks = that._seriesData ? that._seriesData.breaks || [] : [];
+        const breaksLength = breaks.length;
         const screenDelta = _abs(canvas.start - canvas.end);
 
         return screenDelta - (breaksLength ? breaks[breaksLength - 1].cumulativeWidth : 0);
     },
 
     _getScaleBreaks: function() { return []; },
+
+    _filterBreaks: function() { return []; },
 
     _adjustTitle: _noop,
 

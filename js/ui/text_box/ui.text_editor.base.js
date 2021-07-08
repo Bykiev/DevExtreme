@@ -7,6 +7,7 @@ import { isDefined } from '../../core/utils/type';
 import { extend } from '../../core/utils/extend';
 import { inArray } from '../../core/utils/array';
 import { each } from '../../core/utils/iterator';
+import devices from '../../core/devices';
 import themes from '../themes';
 import Editor from '../editor/editor';
 import * as eventUtils from '../../events/utils';
@@ -238,7 +239,7 @@ const TextEditorBase = Editor.inherit({
     },
 
     _renderInput: function() {
-        this._$textEditorContainer = $('<div>')
+        this._$buttonsContainer = this._$textEditorContainer = $('<div>')
             .addClass(TEXTEDITOR_CONTAINER_CLASS)
             .appendTo(this.$element());
 
@@ -297,8 +298,8 @@ const TextEditorBase = Editor.inherit({
     _renderButtonContainers: function() {
         const buttons = this.option('buttons');
 
-        this._$beforeButtonsContainer = this._buttonCollection.renderBeforeButtons(buttons, this._$textEditorContainer);
-        this._$afterButtonsContainer = this._buttonCollection.renderAfterButtons(buttons, this._$textEditorContainer);
+        this._$beforeButtonsContainer = this._buttonCollection.renderBeforeButtons(buttons, this._$buttonsContainer);
+        this._$afterButtonsContainer = this._buttonCollection.renderAfterButtons(buttons, this._$buttonsContainer);
     },
 
     _clean() {
@@ -307,6 +308,7 @@ const TextEditorBase = Editor.inherit({
         this._$beforeButtonsContainer = null;
         this._$afterButtonsContainer = null;
         this._$textEditorContainer = null;
+        this._$buttonsContainer = null;
         this.callBase();
     },
 
@@ -322,10 +324,26 @@ const TextEditorBase = Editor.inherit({
     },
 
     _applyInputAttributes: function($input, customAttributes) {
-        $input.attr('autocomplete', 'off')
-            .attr(customAttributes)
+        const inputAttributes = extend(this._getDefaultAttributes(), customAttributes);
+        $input
+            .attr(inputAttributes)
             .addClass(TEXTEDITOR_INPUT_CLASS)
             .css('minHeight', this.option('height') ? '0' : '');
+    },
+
+    _getDefaultAttributes: function() {
+        const defaultAttributes = {
+            autocomplete: 'off'
+        };
+
+        const { ios, mac } = devices.real();
+        if(ios || mac) {
+            // WA to fix vAlign (T898735)
+            // https://bugs.webkit.org/show_bug.cgi?id=142968
+            defaultAttributes.placeholder = ' ';
+        }
+
+        return defaultAttributes;
     },
 
     _updateButtons: function(names) {
@@ -347,7 +365,7 @@ const TextEditorBase = Editor.inherit({
     },
 
     _renderInputValue: function(value) {
-        value = value || this.option('value');
+        value = value ?? this.option('value');
 
         let text = this.option('text');
         const displayValue = this.option('displayValue');
@@ -395,11 +413,10 @@ const TextEditorBase = Editor.inherit({
     },
 
     _togglePlaceholder: function(isEmpty) {
-        if(!this._$placeholder) {
-            return;
-        }
-
-        this._$placeholder.toggleClass(STATE_INVISIBLE_CLASS, !isEmpty);
+        this.$element()
+            .find(`.${TEXTEDITOR_PLACEHOLDER_CLASS}`)
+            .eq(0)
+            .toggleClass(STATE_INVISIBLE_CLASS, !isEmpty);
     },
 
     _renderProps: function() {
@@ -412,11 +429,7 @@ const TextEditorBase = Editor.inherit({
         this.callBase.apply(this, arguments);
 
         const $input = this._input();
-        if(value) {
-            $input.attr('disabled', true);
-        } else {
-            $input.removeAttr('disabled');
-        }
+        $input.prop('disabled', value);
     },
 
     _toggleTabIndex: function() {
@@ -571,6 +584,10 @@ const TextEditorBase = Editor.inherit({
         return this.element();
     },
 
+    _isInput: function(element) {
+        return element === this._input().get(0);
+    },
+
     _preventNestedFocusEvent: function(event) {
         if(event.isDefaultPrevented()) {
             return true;
@@ -579,7 +596,7 @@ const TextEditorBase = Editor.inherit({
         let result = this._isNestedTarget(event.relatedTarget);
 
         if(event.type === 'focusin') {
-            result = result && this._isNestedTarget(event.target);
+            result = result && this._isNestedTarget(event.target) && !this._isInput(event.target);
         }
 
         result && event.preventDefault();
@@ -653,7 +670,7 @@ const TextEditorBase = Editor.inherit({
     },
 
     _updateValue: function() {
-        this.option('text', undefined);
+        this._options.silent('text', null);
         this._renderValue();
     },
 
@@ -667,7 +684,7 @@ const TextEditorBase = Editor.inherit({
     },
 
     _optionChanged: function(args) {
-        const { name } = args;
+        const { name, fullName, value } = args;
 
         if(inArray(name.replace('on', ''), EVENTS_LIST) > -1) {
             this._refreshEvents();
@@ -714,19 +731,20 @@ const TextEditorBase = Editor.inherit({
                 this.callBase(args);
                 break;
             case 'inputAttr':
-                this._applyInputAttributes(this._input(), args.value);
+                this._applyInputAttributes(this._input(), this.option(name));
                 break;
             case 'stylingMode':
                 this._renderStylingMode();
                 break;
             case 'buttons':
-                if(args.fullName === args.name) {
-                    checkButtonsOptionType(args.value);
+                if(fullName === name) {
+                    checkButtonsOptionType(value);
                 }
                 this._$beforeButtonsContainer && this._$beforeButtonsContainer.remove();
                 this._$afterButtonsContainer && this._$afterButtonsContainer.remove();
                 this._buttonCollection.clean();
                 this._renderButtonContainers();
+                this._updateButtonsStyling(this.option('stylingMode'));
                 break;
             case 'displayValueFormatter':
                 this._invalidate();
@@ -779,7 +797,7 @@ const TextEditorBase = Editor.inherit({
 
         const defaultOptions = this._getDefaultOptions();
         if(this.option('value') === defaultOptions.value) {
-            this.option('text', '');
+            this._options.silent('text', '');
             this._renderValue();
         } else {
             this.option('value', defaultOptions.value);

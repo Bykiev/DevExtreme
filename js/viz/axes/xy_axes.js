@@ -60,51 +60,6 @@ function sortingBreaks(breaks) {
     return breaks.sort(function(a, b) { return a.from - b.from; });
 }
 
-function filterBreaks(breaks, viewport, breakStyle) {
-    const minVisible = viewport.minVisible;
-    const maxVisible = viewport.maxVisible;
-    const breakSize = breakStyle ? breakStyle.width : 0;
-
-    return breaks.reduce(function(result, currentBreak) {
-        let from = currentBreak.from;
-        let to = currentBreak.to;
-        const lastResult = result[result.length - 1];
-        let newBreak;
-
-        if(!isDefined(from) || !isDefined(to)) {
-            return result;
-        }
-        if(from > to) {
-            to = [from, from = to][0];
-        }
-        if(result.length && from < lastResult.to) {
-            if(to > lastResult.to) {
-                lastResult.to = to > maxVisible ? maxVisible : to;
-                if(lastResult.gapSize) {
-                    lastResult.gapSize = undefined;
-                    lastResult.cumulativeWidth += breakSize;
-                }
-            }
-        } else {
-            if(((from >= minVisible && from < maxVisible) || (to <= maxVisible && to > minVisible)) && to - from < maxVisible - minVisible) {
-                from = from >= minVisible ? from : minVisible;
-                to = to <= maxVisible ? to : maxVisible;
-                newBreak = {
-                    from: from,
-                    to: to,
-                    cumulativeWidth: (lastResult?.cumulativeWidth ?? 0) + breakSize
-                };
-                if(currentBreak.gapSize) {
-                    newBreak.gapSize = dateUtils.convertMillisecondsToDateUnits(to - from);
-                    newBreak.cumulativeWidth = lastResult?.cumulativeWidth ?? 0;
-                }
-                result.push(newBreak);
-            }
-        }
-        return result;
-    }, []);
-}
-
 function getMarkerDates(min, max, markerInterval) {
     const origMin = min;
     let dates;
@@ -996,12 +951,12 @@ module.exports = {
                 seriesData.maxVisible = viewport.max;
             }
 
-            that._translator.updateBusinessRange(that.adjustViewport(seriesData));
-
-            that._breaks = that._getScaleBreaks(that._options, {
+            seriesData.userBreaks = that._getScaleBreaks(that._options, {
                 minVisible: seriesData.minVisible,
                 maxVisible: seriesData.maxVisible
             }, that._series, that.isArgumentAxis);
+
+            that._translator.updateBusinessRange(that._getViewportRange());
         },
 
         hasWrap() {
@@ -1077,6 +1032,53 @@ module.exports = {
             return skippedCategory;
         },
 
+        _filterBreaks: function(breaks, viewport, breakStyle) {
+            const minVisible = viewport.minVisible;
+            const maxVisible = viewport.maxVisible;
+            const breakSize = breakStyle ? breakStyle.width : 0;
+
+            return breaks.reduce(function(result, currentBreak) {
+                let from = currentBreak.from;
+                let to = currentBreak.to;
+                const lastResult = result[result.length - 1];
+                let newBreak;
+
+                if(!isDefined(from) || !isDefined(to)) {
+                    return result;
+                }
+                if(from > to) {
+                    to = [from, from = to][0];
+                }
+                if(result.length && from < lastResult.to) {
+                    if(to > lastResult.to) {
+                        lastResult.to = to > maxVisible ? maxVisible : to;
+                        if(lastResult.gapSize) {
+                            lastResult.gapSize = undefined;
+                            lastResult.cumulativeWidth += breakSize;
+                        }
+                    }
+                } else {
+                    if((from >= minVisible && from < maxVisible) || (to <= maxVisible && to > minVisible)) {
+                        from = from >= minVisible ? from : minVisible;
+                        to = to <= maxVisible ? to : maxVisible;
+                        if(to - from < maxVisible - minVisible) {
+                            newBreak = {
+                                from: from,
+                                to: to,
+                                cumulativeWidth: (lastResult?.cumulativeWidth ?? 0) + breakSize
+                            };
+                            if(currentBreak.gapSize) {
+                                newBreak.gapSize = dateUtils.convertMillisecondsToDateUnits(to - from);
+                                newBreak.cumulativeWidth = lastResult?.cumulativeWidth ?? 0;
+                            }
+                            result.push(newBreak);
+                        }
+                    }
+                }
+                return result;
+            }, []);
+        },
+
         _getScaleBreaks: function(axisOptions, viewport, series, isArgumentAxis) {
             const that = this;
             let breaks = (axisOptions.breaks || []).map(function(b) {
@@ -1096,7 +1098,7 @@ module.exports = {
                 && axisOptions.autoBreaksEnabled && axisOptions.maxAutoBreakCount !== 0) {
                 breaks = breaks.concat(generateAutoBreaks(axisOptions, series, viewport));
             }
-            return filterBreaks(sortingBreaks(breaks), viewport, axisOptions.breakStyle);
+            return sortingBreaks(breaks);
         },
 
         _drawBreak: function(translatedEnd, positionFrom, positionTo, width, options, group) {
@@ -1241,15 +1243,15 @@ module.exports = {
 
         getCustomPosition(position) {
             const that = this;
-            const oppositeAxis = that.getCustomPositionAxis();
+            const orthogonalAxis = that.getOrthogonalAxis();
             const resolvedPosition = position ?? that.getResolvedPositionOption();
             const offset = that.getOptions().offset;
-            const oppositeTranslator = oppositeAxis.getTranslator();
-            const oppositeAxisType = oppositeAxis.getOptions().type;
-            let validPosition = oppositeAxis.validateUnit(resolvedPosition);
+            const orthogonalTranslator = orthogonalAxis.getTranslator();
+            const orthogonalAxisType = orthogonalAxis.getOptions().type;
+            let validPosition = orthogonalAxis.validateUnit(resolvedPosition);
             let currentPosition;
 
-            if(oppositeAxisType === 'discrete' && (!oppositeTranslator._categories || oppositeTranslator._categories.indexOf(validPosition) < 0)) {
+            if(orthogonalAxisType === 'discrete' && (!orthogonalTranslator._categories || orthogonalTranslator._categories.indexOf(validPosition) < 0)) {
                 validPosition = undefined;
             }
 
@@ -1258,7 +1260,7 @@ module.exports = {
             } else if(!isDefined(validPosition)) {
                 currentPosition = that.getPredefinedPosition(that.getOptions().position);
             } else {
-                currentPosition = oppositeTranslator.to(validPosition, -1);
+                currentPosition = orthogonalTranslator.to(validPosition, -1);
             }
 
             if(isFinite(currentPosition) && isFinite(offset)) {
@@ -1270,12 +1272,12 @@ module.exports = {
 
         getCustomBoundaryPosition(position) {
             const that = this;
-            const oppositeAxis = that.getCustomPositionAxis();
+            const orthogonalAxis = that.getOrthogonalAxis();
             const resolvedPosition = position ?? that.getResolvedPositionOption();
-            const boundaryPositions = that._orthogonalPositions;
-            const oppositeTranslator = oppositeAxis.getTranslator();
+            const orthogonalTranslator = orthogonalAxis.getTranslator();
+            const visibleArea = orthogonalTranslator.getCanvasVisibleArea();
 
-            if(!isDefined(boundaryPositions) || !isDefined(oppositeAxis._orthogonalPositions) || oppositeTranslator.canvasLength === 0) {
+            if(!isDefined(orthogonalAxis._orthogonalPositions) || orthogonalTranslator.canvasLength === 0) {
                 return undefined;
             }
 
@@ -1283,10 +1285,10 @@ module.exports = {
 
             if(!isDefined(currentPosition)) {
                 return that.getResolvedBoundaryPosition();
-            } else if(currentPosition <= boundaryPositions.start || currentPosition >= boundaryPositions.end) {
-                const isStartPosition = currentPosition <= boundaryPositions.start;
-                return isStartPosition ? (that._isHorizontal ? TOP : LEFT) :
-                    (that._isHorizontal ? BOTTOM : RIGHT);
+            } else if(currentPosition <= visibleArea.min) {
+                return that._isHorizontal ? TOP : LEFT;
+            } else if(currentPosition >= visibleArea.max) {
+                return that._isHorizontal ? BOTTOM : RIGHT;
             }
 
             return currentPosition;
@@ -1299,7 +1301,7 @@ module.exports = {
 
         customPositionIsAvailable() {
             const options = this.getOptions();
-            return isDefined(this.getCustomPositionAxis()) && (isDefined(options.customPosition) || isFinite(options.offset));
+            return isDefined(this.getOrthogonalAxis()) && (isDefined(options.customPosition) || isFinite(options.offset));
         },
 
         hasCustomPosition() {
@@ -1324,6 +1326,135 @@ module.exports = {
 
         getPredefinedPosition(position) {
             return this._orthogonalPositions?.[position === TOP || position === LEFT ? 'start' : 'end'];
+        },
+
+        resolveOverlappingForCustomPositioning(oppositeAxes) {
+            const that = this;
+
+            if(!that.hasCustomPosition() && !that.customPositionIsBoundary() && !oppositeAxes.some(a => a.hasCustomPosition())) {
+                return;
+            }
+
+            const overlappingObj = {
+                axes: [],
+                ticks: []
+            };
+
+            oppositeAxes.filter(orthogonalAxis => orthogonalAxis.pane === that.pane).forEach(orthogonalAxis => {
+                for(let i = 0; i < that._majorTicks.length; i++) {
+                    const tick = that._majorTicks[i];
+                    const label = tick.label;
+                    if(label) {
+                        if(overlappingObj.axes.indexOf(orthogonalAxis) < 0 && that._detectElementsOverlapping(label, orthogonalAxis._axisElement)) {
+                            overlappingObj.axes.push(orthogonalAxis);
+                            that._shiftThroughOrthogonalAxisOverlappedTick(label, orthogonalAxis);
+                        }
+
+                        for(let j = 0; j < orthogonalAxis._majorTicks.length; j++) {
+                            const oppositeTick = orthogonalAxis._majorTicks[j];
+                            const oppositeLabel = oppositeTick.label;
+                            if(oppositeLabel && that._detectElementsOverlapping(label, oppositeLabel)) {
+                                overlappingObj.ticks.push(tick);
+                                that._shiftThroughAxisOverlappedTick(tick);
+                                i = that._majorTicks.length;
+                                break;
+                            }
+                        }
+                    }
+
+                    if(tick.mark && overlappingObj.ticks.indexOf(tick) < 0) {
+                        if(that._isHorizontal && tick.mark.attr('translateY')) {
+                            tick.mark.attr({ translateY: 0 });
+                        } else if(!that._isHorizontal && tick.mark.attr('translateX')) {
+                            tick.mark.attr({ translateX: 0 });
+                        }
+                    }
+                }
+            });
+        },
+
+        _shiftThroughOrthogonalAxisOverlappedTick(label, orthogonalAxis) {
+            const that = this;
+            const labelBBox = label.getBBox();
+            const orthogonalAxisPosition = orthogonalAxis.getAxisPosition();
+            const orthogonalAxisLabelOptions = orthogonalAxis.getOptions().label;
+            const orthogonalAxisLabelPosition = orthogonalAxisLabelOptions.position;
+            const orthogonalAxisLabelIndent = orthogonalAxisLabelOptions.indentFromAxis / 2;
+            const translateCoordName = that._isHorizontal ? 'translateX' : 'translateY';
+            const defaultOrthogonalAxisLabelPosition = that._isHorizontal ? LEFT : TOP;
+            const translate = label.attr(translateCoordName);
+            const labelCoord = (that._isHorizontal ? labelBBox.x : labelBBox.y) + translate;
+            const labelSize = that._isHorizontal ? labelBBox.width : labelBBox.height;
+            const outsidePart = orthogonalAxisPosition - labelCoord;
+            const insidePart = labelCoord + labelSize - orthogonalAxisPosition;
+            const attr = {};
+
+            attr[translateCoordName] = translate;
+
+            if(outsidePart > 0 && insidePart > 0) {
+                if(insidePart - outsidePart > 1) {
+                    attr[translateCoordName] += outsidePart + orthogonalAxisLabelIndent;
+                } else if(outsidePart - insidePart > 1) {
+                    attr[translateCoordName] -= insidePart + orthogonalAxisLabelIndent;
+                } else {
+                    attr[translateCoordName] += orthogonalAxisLabelPosition === defaultOrthogonalAxisLabelPosition
+                        ? outsidePart + orthogonalAxisLabelIndent
+                        : -(insidePart + orthogonalAxisLabelIndent);
+                }
+
+                label.attr(attr);
+            }
+        },
+
+        _shiftThroughAxisOverlappedTick(tick) {
+            const that = this;
+            const label = tick.label;
+
+            if(!label) {
+                return;
+            }
+
+            const labelBBox = label.getBBox();
+            const tickMarkBBox = tick.mark?.getBBox();
+            const axisPosition = that.getAxisPosition();
+            const labelOptions = that.getOptions().label;
+            const labelIndent = labelOptions.indentFromAxis;
+            const labelPosition = labelOptions.position;
+            const defaultLabelPosition = that._isHorizontal ? TOP : LEFT;
+            const translateCoordName = that._isHorizontal ? 'translateY' : 'translateX';
+            const translate = label.attr(translateCoordName);
+            const labelCoord = (that._isHorizontal ? labelBBox.y : labelBBox.x) + translate;
+            const labelSize = that._isHorizontal ? labelBBox.height : labelBBox.width;
+            const attr = {};
+
+            attr[translateCoordName] = translate + (labelPosition === defaultLabelPosition
+                ? axisPosition - labelCoord + labelIndent
+                : -(labelCoord - axisPosition + labelSize + labelIndent));
+            label.attr(attr);
+
+            if(tick.mark) {
+                const markerCoord = that._isHorizontal ? tickMarkBBox.y : tickMarkBBox.x;
+                const markerSize = that._isHorizontal ? tickMarkBBox.height : tickMarkBBox.width;
+                attr[translateCoordName] = 2 * (axisPosition - markerCoord) - markerSize + 1;
+                tick.mark.attr(attr);
+            }
+        },
+
+        _detectElementsOverlapping(element1, element2) {
+            if(!element1 || !element2) {
+                return false;
+            }
+
+            const bBox1 = element1.getBBox();
+            const x1 = bBox1.x + element1.attr('translateX');
+            const y1 = bBox1.y + element1.attr('translateY');
+
+            const bBox2 = element2.getBBox();
+            const x2 = bBox2.x + element2.attr('translateX');
+            const y2 = bBox2.y + element2.attr('translateY');
+
+            return (x2 >= x1 && x2 <= x1 + bBox1.width || x1 >= x2 && x1 <= x2 + bBox2.width)
+                && (y2 >= y1 && y2 <= y1 + bBox1.height || y1 >= y2 && y1 <= y2 + bBox2.height);
         }
     }
 };

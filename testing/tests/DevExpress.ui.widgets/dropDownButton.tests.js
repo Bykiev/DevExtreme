@@ -4,6 +4,8 @@ import typeUtils from 'core/utils/type';
 import eventsEngine from 'events/core/events_engine';
 import keyboardMock from '../../helpers/keyboardMock.js';
 import browser from 'core/utils/browser';
+import ArrayStore from 'data/array_store';
+import { DataSource } from 'data/data_source/data_source';
 
 import 'common.css!';
 import 'generic_light.css!';
@@ -15,6 +17,12 @@ const DROP_DOWN_BUTTON_TOGGLE_CLASS = 'dx-dropdownbutton-toggle';
 const BUTTON_GROUP_WRAPPER = 'dx-buttongroup-wrapper';
 const BUTTON_TEXT = 'dx-button-text';
 const LIST_GROUP_HEADER_CLASS = 'dx-list-group-header';
+const DROP_DOWN_BUTTON_HAS_ARROW_CLASS = 'dx-dropdownbutton-has-arrow';
+const OVERLAY_CONTENT_CLASS = 'dx-overlay-content';
+const OVERLAY_WRAPPER_CLASS = 'dx-overlay-wrapper';
+const POPUP_CONTENT_CLASS = 'dx-popup-content';
+const POPUP_CLASS = 'dx-popup';
+const FOCUSED_CLASS = 'dx-state-focused';
 
 QUnit.testStart(() => {
     const markup =
@@ -73,6 +81,415 @@ QUnit.module('popup integration', {
         this.popup = getPopup(this.instance);
     }
 }, () => {
+    QUnit.module('overlay content height', () => {
+        QUnit.test('should be equal to content height when dropDownOptions.height in not defined', function(assert) {
+            const contentHeight = 300;
+            $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                dropDownContentTemplate: () => {
+                    return $('<div>').css({ height: contentHeight });
+                },
+            });
+
+            const $popupContent = $(`.${POPUP_CONTENT_CLASS}`);
+            assert.strictEqual($popupContent.height(), contentHeight, 'overlay content height is correct');
+        });
+
+        QUnit.test('should be equal to content height when dropDownOptions.height is set to auto', function(assert) {
+            const contentHeight = 300;
+            $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                dropDownContentTemplate: () => {
+                    return $('<div>').css({ height: contentHeight });
+                },
+                dropDownOptions: {
+                    height: 'auto'
+                }
+            });
+
+            const $popupContent = $(`.${POPUP_CONTENT_CLASS}`);
+            assert.strictEqual($popupContent.height(), contentHeight, 'overlay content height is correct');
+        });
+
+        QUnit.test('should be equal to content height when dropDownOptions.height in not defined after editor height runtime change', function(assert) {
+            const contentHeight = 300;
+            const dropDownButton = $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                dropDownContentTemplate: () => {
+                    return $('<div>').css({ height: contentHeight });
+                },
+            }).dxDropDownButton('instance');
+
+            dropDownButton.option('height', 200);
+
+            const $popupContent = $(`.${POPUP_CONTENT_CLASS}`);
+            assert.strictEqual($popupContent.height(), contentHeight, 'overlay content height is correct');
+        });
+
+        QUnit.test('should be equal to content height when dropDownOptions.height is set to auto after editor height runtime change', function(assert) {
+            const contentHeight = 300;
+            const dropDownButton = $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                dropDownContentTemplate: () => {
+                    return $('<div>').css({ height: contentHeight });
+                },
+                dropDownOptions: {
+                    height: 'auto'
+                }
+            }).dxDropDownButton('instance');
+
+            dropDownButton.option('height', 200);
+
+            const $popupContent = $(`.${POPUP_CONTENT_CLASS}`);
+            assert.strictEqual($popupContent.height(), contentHeight, 'overlay content height is correct');
+        });
+
+        QUnit.test('should be equal to dropDownOptions.height if it is defined', function(assert) {
+            const dropDownOptionsHeight = 300;
+            $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                dropDownOptions: {
+                    height: dropDownOptionsHeight
+                }
+            });
+
+            const $overlayContent = $(`.${OVERLAY_CONTENT_CLASS}`);
+            assert.strictEqual($overlayContent.outerHeight(), dropDownOptionsHeight, 'overlay content height is correct');
+        });
+
+        QUnit.test('should be equal to dropDownOptions.height if it is defined even after editor height runtime change', function(assert) {
+            const dropDownOptionsHeight = 300;
+            const dropDownButton = $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                dropDownOptions: {
+                    height: dropDownOptionsHeight
+                }
+            }).dxDropDownButton('instance');
+
+            dropDownButton.option('height', 200);
+
+            const $overlayContent = $(`.${OVERLAY_CONTENT_CLASS}`);
+            assert.strictEqual($overlayContent.outerHeight(), dropDownOptionsHeight, 'overlay content height is correct');
+        });
+
+        QUnit.test('should be equal to wrapper height if dropDownOptions.height is set to 100%', function(assert) {
+            $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                dropDownOptions: {
+                    height: '100%'
+                }
+            });
+
+            const $overlayContent = $(`.${OVERLAY_CONTENT_CLASS}`);
+            const $overlayWrapper = $(`.${OVERLAY_WRAPPER_CLASS}`);
+            assert.strictEqual($overlayContent.outerHeight(), $overlayWrapper.outerHeight(), 'overlay content height is correct');
+        });
+
+        QUnit.test('should be calculated relative to wrapper when dropDownOptions.height is percent', function(assert) {
+            $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                dropDownOptions: {
+                    height: '50%'
+                }
+            });
+
+            const $overlayContent = $(`.${OVERLAY_CONTENT_CLASS}`);
+            const $overlayWrapper = $(`.${OVERLAY_WRAPPER_CLASS}`);
+            assert.roughEqual($overlayContent.outerHeight(), $overlayWrapper.outerHeight() / 2, 0.1, 'overlay content height is correct');
+        });
+
+        QUnit.test('should be calculated relative to wrapper after editor height runtime change', function(assert) {
+            const dropDownButton = $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                dropDownOptions: {
+                    height: '50%'
+                },
+                height: 600,
+            }).dxDropDownButton('instance');
+
+            dropDownButton.option('height', 200);
+
+            const $overlayContent = $(`.${OVERLAY_CONTENT_CLASS}`);
+            const $overlayWrapper = $(`.${OVERLAY_WRAPPER_CLASS}`);
+            assert.roughEqual($overlayContent.outerHeight(), $overlayWrapper.outerHeight() / 2, 0.1, 'overlay content height is correct');
+        });
+    });
+
+    QUnit.test('dropDownOptions.height should be passed to popup', function(assert) {
+        const dropDownOptionsHeight = 500;
+        const $dropDownButton = $('#dropDownButton').dxDropDownButton({
+            dropDownOptions: {
+                height: dropDownOptionsHeight
+            },
+            opened: true
+        });
+
+        const popup = $dropDownButton.find(`.${POPUP_CLASS}`).dxPopup('instance');
+        assert.strictEqual(popup.option('height'), dropDownOptionsHeight, 'popup height option value is correct');
+    });
+
+    QUnit.test('popup should have height equal to dropDownOptions.height even after editor input height change', function(assert) {
+        const dropDownOptionsHeight = 500;
+        const $dropDownButton = $('#dropDownButton').dxDropDownButton({
+            dropDownOptions: {
+                height: dropDownOptionsHeight
+            },
+            opened: true
+        });
+        const dropDownButton = $dropDownButton.dxDropDownButton('instance');
+
+        dropDownButton.option('height', 300);
+
+        const popup = $dropDownButton.find(`.${POPUP_CLASS}`).dxPopup('instance');
+        assert.strictEqual(popup.option('height'), dropDownOptionsHeight, 'popup height option value is correct');
+    });
+
+    QUnit.module('overlay content width', () => {
+        QUnit.test('should be equal to editor width if dropDownOptions.width is not defined and content width is smaller than editor width', function(assert) {
+            const $container = $('<div>')
+                .css({ width: 150 })
+                .appendTo('#qunit-fixture');
+
+            const $dropDownButton = $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                width: 500,
+                dropDownOptions: {
+                    container: $container
+                }
+            });
+
+            const overlayContentWidth = $(`.${OVERLAY_CONTENT_CLASS}`).outerWidth();
+
+            assert.strictEqual(overlayContentWidth, $dropDownButton.outerWidth(), 'width is correct on init');
+            assert.strictEqual(overlayContentWidth, 500, 'width is correct on init');
+        });
+
+        QUnit.test('should be equal to editor width if dropDownOptions.width is not defined and content width is bigger than editor width', function(assert) {
+            const $container = $('<div>')
+                .css({ width: 150 })
+                .appendTo('#qunit-fixture');
+
+            const $dropDownButton = $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                width: 100,
+                dropDownOptions: {
+                    container: $container
+                }
+            });
+
+            const overlayContentWidth = $(`.${OVERLAY_CONTENT_CLASS}`).outerWidth();
+
+            assert.strictEqual(overlayContentWidth, $dropDownButton.outerWidth(), 'width is correct on init');
+            assert.strictEqual(overlayContentWidth, 100, 'width is correct on init');
+        });
+
+        QUnit.test('should be equal to editor width if dropDownOptions.width is not defined after editor width runtime change', function(assert) {
+            const $dropDownButton = $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                width: 500
+            });
+
+            const instance = $dropDownButton.dxDropDownButton('instance');
+            const $overlayContent = $(`.${OVERLAY_CONTENT_CLASS}`);
+
+            instance.option('width', 700);
+            assert.strictEqual($overlayContent.outerWidth(), $dropDownButton.outerWidth(), 'width are equal after option change');
+            assert.strictEqual($overlayContent.outerWidth(), 700, 'width is correct after option change');
+        });
+
+        QUnit.test('should be equal to content width if dropDownOptions.width is "auto" and content width is bigger than editor width', function(assert) {
+            $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                width: 100,
+                dropDownContentTemplate: () => {
+                    return $('<div>').css({ width: 300 });
+                },
+                dropDownOptions: {
+                    width: 'auto'
+                }
+            });
+
+            const popupContentWidth = $(`.${POPUP_CONTENT_CLASS}`).width();
+
+            assert.strictEqual(popupContentWidth, 300, 'width is correct');
+        });
+
+        QUnit.test('should be equal to content width if dropDownOptions.width is "auto" and content width is smaller than editor width', function(assert) {
+            $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                width: 300,
+                dropDownContentTemplate: () => {
+                    return $('<div>').css({ width: 100 });
+                },
+                dropDownOptions: {
+                    width: 'auto'
+                }
+            });
+
+            const popupContentWidth = $(`.${POPUP_CONTENT_CLASS}`).width();
+
+            assert.strictEqual(popupContentWidth, 100, 'width is correct');
+        });
+
+        QUnit.test('should be equal to wrapper width if dropDownOptions.width is "100%" and content width is smaller than editor width', function(assert) {
+            $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                width: 300,
+                dropDownContentTemplate: () => {
+                    return $('<div>').css({ width: 100 });
+                },
+                dropDownOptions: {
+                    width: '100%'
+                }
+            });
+
+            const overlayContentWidth = $(`.${OVERLAY_CONTENT_CLASS}`).outerWidth();
+            const overlayWrapperWidth = $(`.${OVERLAY_WRAPPER_CLASS}`).outerWidth();
+
+            assert.strictEqual(overlayContentWidth, 300, 'width is correct');
+            assert.strictEqual(overlayContentWidth, overlayWrapperWidth, 'width is correct');
+        });
+
+        QUnit.test('should be equal to wrapper width if dropDownOptions.width is "100%" and content width is bigger than editor width', function(assert) {
+            $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                width: 100,
+                dropDownContentTemplate: () => {
+                    return $('<div>').css({ width: 300 });
+                },
+                dropDownOptions: {
+                    width: '100%'
+                }
+            });
+
+            const overlayContentWidth = $(`.${OVERLAY_CONTENT_CLASS}`).outerWidth();
+            const overlayWrapperWidth = $(`.${OVERLAY_WRAPPER_CLASS}`).outerWidth();
+
+            assert.strictEqual(overlayContentWidth, 100, 'width is correct');
+            assert.strictEqual(overlayContentWidth, overlayWrapperWidth, 'width is correct');
+        });
+
+        QUnit.test('should be equal to wrapper width if dropDownOptions.width is "100%" and container is defined', function(assert) {
+            const $container = $('<div>')
+                .css({ width: 150 })
+                .appendTo('#qunit-fixture');
+
+            $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                width: 100,
+                dropDownOptions: {
+                    width: '100%',
+                    container: $container
+                }
+            });
+
+            const overlayContentWidth = $(`.${OVERLAY_CONTENT_CLASS}`).outerWidth();
+            const overlayWrapperWidth = $(`.${OVERLAY_WRAPPER_CLASS}`).outerWidth();
+
+            assert.strictEqual(overlayContentWidth, $container.outerWidth(), 'width is correct');
+            assert.strictEqual(overlayContentWidth, overlayWrapperWidth, 'width is correct');
+        });
+
+        QUnit.test('should be equal to dropDownOptions.width if dropDownOptions.width is bigger than editor width', function(assert) {
+            $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                width: 100,
+                dropDownOptions: {
+                    width: 200
+                }
+            });
+
+            const overlayContentWidth = $(`.${OVERLAY_CONTENT_CLASS}`).outerWidth();
+
+            assert.strictEqual(overlayContentWidth, 200, 'width is correct');
+        });
+
+        QUnit.test('should be equal to dropDownOptions.width if dropDownOptions.width is smaller than editor width', function(assert) {
+            $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                width: 200,
+                dropDownOptions: {
+                    width: 100
+                }
+            });
+
+            const overlayContentWidth = $(`.${OVERLAY_CONTENT_CLASS}`).outerWidth();
+
+            assert.strictEqual(overlayContentWidth, 100, 'width is correct');
+        });
+
+        QUnit.test('should be calculated relative to wrapper width when dropDownOptions.width is pecrentage and smaller than 100', function(assert) {
+            $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                width: 300,
+                dropDownOptions: {
+                    width: '50%'
+                }
+            });
+
+            const overlayContentWidth = $(`.${OVERLAY_CONTENT_CLASS}`).outerWidth();
+            const overlayWrapperWidth = $(`.${OVERLAY_WRAPPER_CLASS}`).outerWidth();
+
+            assert.roughEqual(overlayContentWidth, overlayWrapperWidth / 2, 0.1, 'width is correct');
+            assert.roughEqual(overlayContentWidth, 150, 0.1, 'width is correct');
+        });
+
+        QUnit.test('should be calculated relative to wrapper width when dropDownOptions.width is pecrentage and bigger than 100', function(assert) {
+            $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                width: 300,
+                dropDownOptions: {
+                    width: '150%'
+                }
+            });
+
+            const overlayContentWidth = $(`.${OVERLAY_CONTENT_CLASS}`).outerWidth();
+            const overlayWrapperWidth = $(`.${OVERLAY_WRAPPER_CLASS}`).outerWidth();
+
+            assert.roughEqual(overlayContentWidth, overlayWrapperWidth * 1.5, 0.1, 'width is correct');
+            assert.roughEqual(overlayContentWidth, 450, 0.1, 'width is correct');
+        });
+
+        QUnit.test('should be calculated relative to wrapper width when container is defined', function(assert) {
+            const $container = $('<div>')
+                .css({ width: 500 })
+                .appendTo('#qunit-fixture');
+
+            $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                width: 300,
+                dropDownOptions: {
+                    width: '150%',
+                    container: $container
+                }
+            });
+
+            const overlayContentWidth = $(`.${OVERLAY_CONTENT_CLASS}`).outerWidth();
+            const overlayWrapperWidth = $(`.${OVERLAY_WRAPPER_CLASS}`).outerWidth();
+
+            assert.roughEqual(overlayContentWidth, overlayWrapperWidth * 1.5, 0.1, 'width is correct');
+            assert.roughEqual(overlayContentWidth, 750, 0.1, 'width is correct');
+        });
+
+        QUnit.test('should be calculated relative to wrapper width after wrapper width runtime change', function(assert) {
+            const dropDownButton = $('#dropDownButton').dxDropDownButton({
+                opened: true,
+                width: 300,
+                dropDownOptions: {
+                    width: '150%'
+                }
+            }).dxDropDownButton('instance');
+
+            dropDownButton.option('width', 500);
+
+            const overlayContentWidth = $(`.${OVERLAY_CONTENT_CLASS}`).outerWidth();
+            const overlayWrapperWidth = $(`.${OVERLAY_WRAPPER_CLASS}`).outerWidth();
+
+            assert.roughEqual(overlayContentWidth, overlayWrapperWidth * 1.5, 0.1, 'width is correct');
+            assert.roughEqual(overlayContentWidth, 750, 0.1, 'width is correct');
+        });
+    });
+
     QUnit.test('toggle button should toggle the widget', function(assert) {
         const instance = new DropDownButton('#dropDownButton', { splitButton: true });
         const $toggleButton = getToggleButton(instance);
@@ -84,65 +501,10 @@ QUnit.module('popup integration', {
         assert.strictEqual(instance.option('dropDownOptions.visible'), false, 'the widget is closed');
     });
 
-    QUnit.test('popup and list should not be rendered if deferRendering is true', function(assert) {
-        const dropDownButton = new DropDownButton('#dropDownButton');
-
-        assert.strictEqual(getPopup(dropDownButton), undefined, 'popup should be lazy rendered');
-        assert.strictEqual(getList(dropDownButton), undefined, 'list should be lazy rendered');
-    });
-
-    QUnit.test('dropDownOptions.deferRendering=false should not override deferRendering', function(assert) {
-        const dropDownButton = new DropDownButton('#dropDownButton', {
-            deferRendering: true,
-            dropDownOptions: {
-                deferRendering: false
-            }
-        });
-
-        const popup = getPopup(dropDownButton);
-        assert.strictEqual(popup, undefined, 'popup has not been rendered');
-    });
-
-    QUnit.test('dropDownOptions.deferRendering=true should not override deferRendering', function(assert) {
-        const dropDownButton = new DropDownButton('#dropDownButton', {
-            deferRendering: false,
-            dropDownOptions: {
-                deferRendering: true
-            }
-        });
-
-        const popup = getPopup(dropDownButton);
-        assert.strictEqual(popup.NAME, 'dxPopup', 'popup has been rendered');
-    });
-
-    QUnit.test('dropDownOptions.deferRendering optionChange should be ignored', function(assert) {
-        const dropDownButton = new DropDownButton('#dropDownButton');
-
-        dropDownButton.option('dropDownOptions', { deferRendering: false });
-
-        const popup = getPopup(dropDownButton);
-        assert.strictEqual(popup, undefined, 'dropDownOptions.deferRendering is ignored');
-    });
-
-    QUnit.test('popup and list should be rendered on init when deferRendering is false', function(assert) {
+    QUnit.test('list should be rendered on init when deferRendering is false', function(assert) {
         const dropDownButton = new DropDownButton('#dropDownButton', { deferRendering: false });
-        const popup = getPopup(dropDownButton);
 
-        assert.strictEqual(popup.NAME, 'dxPopup', 'popup has been rendered');
         assert.strictEqual(getList(dropDownButton).NAME, 'dxList', 'list has been rendered');
-        assert.ok(popup.option('closeOnOutsideClick'), 'popup should be closed on outside click');
-    });
-
-    QUnit.test('dropDownOptions.visible=true should not open popup on init', function(assert) {
-        const dropDownButton = new DropDownButton('#dropDownButton', {
-            deferRendering: false,
-            dropDownOptions: {
-                visible: true
-            }
-        });
-
-        const popup = getPopup(dropDownButton);
-        assert.strictEqual(popup.option('visible'), false, 'popup is closed');
     });
 
     QUnit.test('popup should have special classes', function(assert) {
@@ -160,30 +522,6 @@ QUnit.module('popup integration', {
 
         const $popupContent = $(getPopup(instance).content());
         assert.ok($popupContent.hasClass(DROP_DOWN_BUTTON_CONTENT), 'popup has special class');
-    });
-
-    QUnit.test('popup width should be equal to dropDownButton width', function(assert) {
-        const $dropDownButton = $('#dropDownButton').dxDropDownButton({
-            opened: true,
-            items: ['1', '2', '3'],
-            width: 500
-        });
-
-        const instance = $dropDownButton.dxDropDownButton('instance');
-        const $popupContent = $(getPopup(instance)._$content);
-        assert.equal($popupContent.outerWidth(), $dropDownButton.outerWidth(), 'width are equal on init');
-        assert.equal($popupContent.outerWidth(), 500, 'width are equal on init');
-
-        instance.option('width', 700);
-        assert.equal($popupContent.outerWidth(), $dropDownButton.outerWidth(), 'width are equal after option change');
-        assert.equal($popupContent.outerWidth(), 700, 'width are equal after option change');
-
-        instance.option('width', '90%');
-        $('#container').get(0).style.width = '900px';
-        instance.option('opened', false);
-        instance.option('opened', true);
-        assert.equal($popupContent.outerWidth(), $dropDownButton.outerWidth(), 'width are equal after option change');
-        assert.equal($popupContent.outerWidth(), 810, 'width are equal after option change');
     });
 
     QUnit.test('popup should be positioned correctly if rtlEnabled is true', function(assert) {
@@ -214,6 +552,9 @@ QUnit.module('popup integration', {
                         padding: 5
                     })
                     .appendTo($container);
+            },
+            dropDownOptions: {
+                width: 'auto'
             }
         });
 
@@ -221,34 +562,6 @@ QUnit.module('popup integration', {
         const $popupContent = $(getPopup(instance).content());
 
         assert.equal($popupContent.outerWidth(), 84, 'width is right');
-    });
-
-    QUnit.test('popup should have correct options after rendering', function(assert) {
-        const options = {
-            deferRendering: this.instance.option('deferRendering'),
-            focusStateEnabled: false,
-            dragEnabled: false,
-            showTitle: false,
-            animation: {
-                show: { type: 'fade', duration: 0, from: 0, to: 1 },
-                hide: { type: 'fade', duration: 400, from: 1, to: 0 }
-            },
-            height: 'auto',
-            shading: false,
-            position: {
-                of: this.instance.$element(),
-                collision: 'flipfit',
-                my: 'top left',
-                at: 'bottom left',
-                offset: {
-                    y: -1
-                }
-            }
-        };
-
-        for(const name in options) {
-            assert.deepEqual(this.popup.option(name), options[name], 'option ' + name + ' is correct');
-        }
     });
 
     QUnit.test('popup width should be recalculated when button dimension changed', function(assert) {
@@ -267,21 +580,22 @@ QUnit.module('popup integration', {
         assert.strictEqual(repaintMock.callCount, 3, 'popup has been repainted 3 times');
     });
 
-    QUnit.test('dropDownOptions can be restored after repaint', function(assert) {
+    QUnit.test('popup should be repositioned after height option runtime change', function(assert) {
         const instance = new DropDownButton('#dropDownButton', {
-            deferRendering: false,
+            opened: true,
             dropDownOptions: {
-                firstOption: 'Test'
-            }
+                'position.collision': 'none'
+            },
         });
 
-        instance.option('dropDownOptions', {
-            secondOption: 'Test 2'
-        });
+        instance.option('height', 300);
 
-        instance.repaint();
-        assert.strictEqual(getPopup(instance).option('firstOption'), 'Test', 'option has been stored after repaint');
-        assert.strictEqual(getPopup(instance).option('secondOption'), 'Test 2', 'option has been stored after repaint');
+        const $overlayContent = $(`.${OVERLAY_CONTENT_CLASS}`);
+        const overlayContentRect = $overlayContent.get(0).getBoundingClientRect();
+        const dropDownButtonRect = $('#dropDownButton').get(0).getBoundingClientRect();
+
+        assert.roughEqual(overlayContentRect.top, dropDownButtonRect.bottom, 1.01, 'top position is correct');
+        assert.roughEqual(overlayContentRect.left, dropDownButtonRect.left, 1.01, 'left position is correct');
     });
 
     QUnit.test('click on toggle button should not be outside', function(assert) {
@@ -571,6 +885,78 @@ QUnit.module('list integration', {}, () => {
         dropDownButton.option('useSelectMode', false);
         assert.deepEqual(list.option('selectedItemKeys'), [], 'selection is correct');
     });
+
+    QUnit.test('selection by click, key has been provided by dataSource', function(assert) {
+        const dropDownButton = new DropDownButton('#dropDownButton', {
+            dataSource: {
+                store: {
+                    type: 'array',
+                    data: [{ key: 1, name: 'Item 1' }, { key: 2, name: 'Item 2' }],
+                    key: 'key'
+                }
+            },
+            deferRendering: false,
+            displayExpr: 'name',
+            selectedItemKey: 2,
+            useSelectMode: true
+        });
+
+        const list = getList(dropDownButton);
+        assert.deepEqual(list.option('selectedItemKeys'), [2], 'selection is correct');
+
+        dropDownButton.open();
+        eventsEngine.trigger(list.itemElements().eq(0), 'dxclick');
+        assert.deepEqual(dropDownButton.option('selectedItemKey'), 1, 'dropDownButton selected item key is correct');
+        assert.deepEqual(list.option('selectedItemKeys'), [1], 'list selected item key is correct');
+    });
+
+    QUnit.test('selection by click, key has been provided by widget', function(assert) {
+        const dropDownButton = new DropDownButton('#dropDownButton', {
+            items: [{ key: 1, name: 'Item 1' }, { key: 2, name: 'Item 2' }],
+            deferRendering: false,
+            keyExpr: 'key',
+            displayExpr: 'name',
+            selectedItemKey: 2,
+            useSelectMode: true
+        });
+
+        const list = getList(dropDownButton);
+        assert.deepEqual(list.option('selectedItemKeys'), [2], 'selection is correct');
+
+        dropDownButton.open();
+        eventsEngine.trigger(list.itemElements().eq(0), 'dxclick');
+        assert.deepEqual(dropDownButton.option('selectedItemKey'), 1, 'dropDownButton selected item key is correct');
+        assert.deepEqual(list.option('selectedItemKeys'), [1], 'list selected item key is correct');
+    });
+
+    QUnit.test('selected item with zero-equal key should be selected in the built-in List', function(assert) {
+        const instance = new DropDownButton('#dropDownButton', {
+            deferRendering: false,
+            items: [{ id: 0, text: 'text1' }, { id: 1, text: 'text2' }],
+            keyExpr: 'id',
+            displayExpr: 'text',
+            useSelectMode: true,
+            selectedItemKey: 0
+        });
+        const list = getList(instance);
+
+        assert.deepEqual(list.option('selectedItemKeys'), [0], 'List has correct selection');
+    });
+
+    QUnit.test('selected item with zero-equal key should be selected in the built-in List when select mode turning on', function(assert) {
+        const instance = new DropDownButton('#dropDownButton', {
+            deferRendering: false,
+            items: [{ id: 0, text: 'text1' }, { id: 1, text: 'text2' }],
+            keyExpr: 'id',
+            displayExpr: 'text',
+            useSelectMode: false,
+            selectedItemKey: 0
+        });
+        const list = getList(instance);
+        instance.option('useSelectMode', true);
+
+        assert.deepEqual(list.option('selectedItemKeys'), [0], 'List has correct selection');
+    });
 });
 
 QUnit.module('common use cases', {
@@ -593,6 +979,23 @@ QUnit.module('common use cases', {
         this.listItems = this.list.itemElements();
     }
 }, () => {
+    QUnit.test('dataSource store should have correct key', function(assert) {
+        const dropDownButton = $('#dropDownButton').dxDropDownButton({
+            items: [{
+                'id': 1,
+                'name': 'I'
+            }],
+            keyExpr: 'id'
+        }).dxDropDownButton('instance');
+
+        let store = dropDownButton.getDataSource().store();
+        assert.strictEqual(store.key(), 'id', 'store key is correct');
+
+        dropDownButton.option('keyExpr', 'this');
+        store = dropDownButton.getDataSource().store();
+        assert.strictEqual(store.key(), 'this', 'store key is correct');
+    });
+
     QUnit.test('toggleButton should have static width (T847072)', function(assert) {
         const dropDownButton = $('#dropDownButton').dxDropDownButton({
             items: [{
@@ -631,16 +1034,6 @@ QUnit.module('common use cases', {
         });
         eventsEngine.trigger(this.list.itemElements().eq(0), 'dxclick');
         assert.strictEqual(getActionButton(this.dropDownButton).text(), 'Trial for Visual Studio', 'action button has been changed');
-    });
-
-    QUnit.test('deferRendering should not do anything if popup has already been rendered', function(assert) {
-        const $dropDownButton = getPopup(this.dropDownButton).$element();
-
-        this.dropDownButton.option('deferRendering', true);
-        assert.strictEqual($dropDownButton, getPopup(this.dropDownButton).$element(), 'popup does not render repeatedly');
-
-        this.dropDownButton.option('deferRendering', false);
-        assert.strictEqual($dropDownButton, getPopup(this.dropDownButton).$element(), 'popup does not render repeatedly');
     });
 
     QUnit.test('Widget should work correct if new selected item has key is 0', function(assert) {
@@ -718,13 +1111,220 @@ QUnit.module('common use cases', {
         });
 
         const firstListItems = getList(this.dropDownButton).itemElements();
-        eventsEngine.trigger(firstListItems[0], 'dxclick');
+        eventsEngine.trigger(firstListItems[1], 'dxclick');
 
         this.dropDownButton.option('items', [{ id: 1, name: 'test' }]);
         this.dropDownButton.option('selectedItemKey', 1);
 
         assert.strictEqual(getActionButton(this.dropDownButton).text(), 'test', 'actionButton text is correct');
         assert.strictEqual(selectionChangeHandler.callCount, 2, 'onSelectionChange is raised');
+    });
+
+    QUnit.test('selectedItem should be kept after items option change when new dataSource includes selectedItemKey (T919804)', function(assert) {
+        const done = assert.async();
+        this.dropDownButton.option({
+            items: [{
+                id: 1, name: 'a'
+            }, {
+                id: 2, name: 'b'
+            }],
+            useSelectMode: true,
+            selectedItemKey: 1
+        });
+
+        const items = [{ id: 1, name: 'test' }];
+        this.dropDownButton.option('items', items);
+
+        setTimeout(() => {
+            assert.strictEqual(this.dropDownButton.option('selectedItemKey'), 1, 'selectedItemKey is kept');
+            assert.deepEqual(this.dropDownButton.option('selectedItem'), items[0], 'selectedItem is correct');
+
+            const list = getList(this.dropDownButton);
+            assert.deepEqual(list.option('selectedItemKeys'), [1], 'list selectedItemKey is kept');
+            assert.deepEqual(list.option('selectedItem'), items[0], 'list selectedItem is correct');
+
+            done();
+        });
+    });
+
+    QUnit.test('selectedItem should be kept after dataSource option change when new dataSource-array includes selectedItemKey (T919804)', function(assert) {
+        const done = assert.async();
+        this.dropDownButton.option({
+            dataSource: [{
+                id: 1, name: 'a'
+            }, {
+                id: 2, name: 'b'
+            }],
+            useSelectMode: true,
+            selectedItemKey: 1
+        });
+
+        const items = [{ id: 1, name: 'test' }];
+        this.dropDownButton.option('dataSource', items);
+
+        setTimeout(() => {
+            assert.strictEqual(this.dropDownButton.option('selectedItemKey'), 1, 'selectedItemKey is kept');
+            assert.deepEqual(this.dropDownButton.option('selectedItem'), items[0], 'selectedItem is correct');
+
+            const list = getList(this.dropDownButton);
+            assert.deepEqual(list.option('selectedItemKeys'), [1], 'list selectedItemKey is kept');
+            assert.deepEqual(list.option('selectedItem'), items[0], 'list selectedItem is correct');
+
+            done();
+        });
+    });
+
+    QUnit.test('keyGetter should be updated after keyExpr option change', function(assert) {
+        this.dropDownButton.option({
+            dataSource: [{
+                key: 1, name: 'a'
+            }, {
+                key: 2, name: 'b'
+            }],
+            keyExpr: 'key',
+            useSelectMode: true,
+            selectedItemKey: 1
+        });
+
+        assert.strictEqual(this.dropDownButton._getKey(), 'key', '_keyGetter was updated');
+    });
+
+    QUnit.test('keyGetter should be updated after dataSource option change', function(assert) {
+        this.dropDownButton.option({
+            keyExpr: 'this',
+            dataSource: new DataSource({
+                store: new ArrayStore({
+                    data: [{
+                        key: 1, name: 'a'
+                    }, {
+                        key: 2, name: 'b'
+                    }],
+                    key: 'key'
+                })
+            }),
+            useSelectMode: true,
+            selectedItemKey: 1
+        });
+
+        assert.strictEqual(this.dropDownButton._getKey(), 'key', '_keyGetter was updated');
+    });
+
+    QUnit.test('list keyExpr should be updated after keyExpr option change', function(assert) {
+        this.dropDownButton.option({
+            keyExpr: 'newValue',
+        });
+
+        const list = getList(this.dropDownButton);
+        assert.strictEqual(list.option('keyExpr'), 'newValue', 'list keyExpr was updated');
+    });
+
+    QUnit.test('list keyExpr should be updated after dataSource option change', function(assert) {
+        this.dropDownButton = new DropDownButton('#dropDownButton', { deferRendering: false });
+
+        this.dropDownButton.option({
+            dataSource: new DataSource({
+                store: new ArrayStore({
+                    data: [{ key: 1, name: 'test' }],
+                    key: 'newValue'
+                }),
+            })
+        });
+
+        const list = getList(this.dropDownButton);
+        assert.strictEqual(list.option('keyExpr'), 'newValue', 'list keyExpr was updated');
+    });
+
+    QUnit.test('selectedItem should be kept after dataSource option change when new dataSource includes selectedItemKey (T919804)', function(assert) {
+        this.dropDownButton = new DropDownButton('#dropDownButton', { deferRendering: false });
+        const done = assert.async();
+
+        const oldDataSource = new DataSource({
+            store: new ArrayStore({
+                data: [{
+                    id: 1, name: 'a'
+                }, {
+                    id: 2, name: 'b'
+                }],
+                key: 'id'
+            }),
+        });
+
+        const newDataSource = new DataSource({
+            store: new ArrayStore({
+                data: [{ key: 1, name: 'test' }],
+                key: 'key'
+            }),
+        });
+
+        this.dropDownButton.option({
+            dataSource: oldDataSource,
+            useSelectMode: true,
+            selectedItemKey: 1,
+        });
+
+        const items = [{ key: 1, name: 'test' }];
+        this.dropDownButton.option('dataSource', newDataSource);
+
+        setTimeout(() => {
+            assert.strictEqual(this.dropDownButton.option('selectedItemKey'), 1, 'selectedItemKey is kept');
+            assert.deepEqual(this.dropDownButton.option('selectedItem'), items[0], 'selectedItem is correct');
+
+            const list = getList(this.dropDownButton);
+            assert.deepEqual(list.option('selectedItemKeys'), [1], 'list selectedItemKeys is kept');
+            assert.deepEqual(list.option('selectedItem'), items[0], 'list selectedItem is correct');
+
+            done();
+        });
+    });
+
+    QUnit.test('selectedItem should be kept after dataSource reload when new dataSource includes selectedItemKey and keyExpr is default (T919804)', function(assert) {
+        const done = assert.async();
+        this.dropDownButton = new DropDownButton('#dropDownButton', {
+            items: [1, 2],
+            useSelectMode: true,
+            selectedItemKey: 1,
+            deferRendering: false
+        });
+
+        const items = [1, 4, 5];
+        this.dropDownButton.option('items', items);
+
+        setTimeout(() => {
+            assert.strictEqual(this.dropDownButton.option('selectedItemKey'), 1, 'selectedItemKey is kept');
+            assert.strictEqual(this.dropDownButton.option('selectedItem'), items[0], 'selectedItem is correct');
+
+            const list = getList(this.dropDownButton);
+            assert.deepEqual(list.option('selectedItemKeys'), [1], 'list selectedItemKey is kept');
+            assert.strictEqual(list.option('selectedItem'), items[0], 'list selectedItem is correct');
+
+            done();
+        });
+    });
+
+    QUnit.test('list selectedItem should be restored after dataSource reload when new dataSource doesn\'t include selectedItemKey', function(assert) {
+        const done = assert.async();
+        this.dropDownButton.option({
+            items: [{
+                id: 1, name: 'a'
+            }, {
+                id: 2, name: 'b'
+            }],
+            useSelectMode: true,
+            selectedItemKey: 1
+        });
+
+        const items = [{ id: 3, name: 'test' }];
+        this.dropDownButton.option('items', items);
+
+        setTimeout(() => {
+            assert.strictEqual(this.dropDownButton.option('selectedItemKey'), null, 'selectedItemKey is correct');
+            assert.strictEqual(this.dropDownButton.option('selectedItem'), null, 'selectedItem is correct');
+
+            const list = getList(this.dropDownButton);
+            assert.deepEqual(list.option('selectedItemKeys'), [], 'list selectedItemKey is kept');
+            assert.strictEqual(list.option('selectedItem'), undefined, 'list selectedItem is correct');
+            done();
+        });
     });
 
     QUnit.test('click on item should raise selectionChanged - subscription by "on" method', function(assert) {
@@ -764,6 +1364,22 @@ QUnit.module('common use cases', {
         eventsEngine.trigger(firstListItems[0], 'dxclick');
 
         assert.strictEqual(this.dropDownButton.option('selectedItem'), items[0], 'selectedItem is correct');
+    });
+
+    QUnit.test('widget should have specific class if it\'s is shown or hidden runtime', function(assert) {
+        this.dropDownButton.option({
+            showArrowIcon: false
+        });
+
+        const $dropDownButton = this.dropDownButton.$element();
+        this.dropDownButton.option('showArrowIcon', true);
+        assert.ok($dropDownButton.hasClass(DROP_DOWN_BUTTON_HAS_ARROW_CLASS));
+
+        this.dropDownButton.option('showArrowIcon', false);
+        assert.notOk($dropDownButton.hasClass(DROP_DOWN_BUTTON_HAS_ARROW_CLASS));
+
+        this.dropDownButton.option('splitButton', true);
+        assert.ok($dropDownButton.hasClass(DROP_DOWN_BUTTON_HAS_ARROW_CLASS));
     });
 });
 
@@ -994,6 +1610,36 @@ QUnit.module('deferred datasource', {
         dropDownButton.option('selectedItemKey', 2);
         this.clock.tick();
         assert.strictEqual(getList(dropDownButton).option('selectedItemKeys')[0], 2, 'selectedItemKeys is correct');
+    });
+
+    QUnit.test('dropDownButton should not try to load selected item after dataSource change if selectedItemKey is undefined', function(assert) {
+        const byKeySpy = sinon.spy(this.dataSourceConfig, 'byKey');
+
+        const dropDownButton = new DropDownButton('#dropDownButton', {
+            deferRendering: false,
+            useSelectMode: true,
+            keyExpr: 'id',
+            displayExpr: 'text',
+            items: [1, 2, 3]
+        });
+
+        dropDownButton.option('dataSource', this.dataSourceConfig);
+
+        assert.ok(byKeySpy.notCalled, 'no unnecessary call was made');
+    });
+
+    QUnit.test('dropDownButton should not try to load value on init if selectedItemKey is undefined (T925687)', function(assert) {
+        const byKeySpy = sinon.spy(this.dataSourceConfig, 'byKey');
+
+        new DropDownButton('#dropDownButton', {
+            deferRendering: false,
+            useSelectMode: true,
+            keyExpr: 'id',
+            displayExpr: 'text',
+            dataSource: this.dataSourceConfig
+        });
+
+        assert.ok(byKeySpy.notCalled, 'no unnecessary call was made');
     });
 });
 
@@ -1276,7 +1922,6 @@ QUnit.module('keyboard navigation', {
         this.$actionButton = getActionButton(this.dropDownButton);
         this.$toggleButton = getToggleButton(this.dropDownButton);
         this.keyboard = keyboardMock(getButtonGroup(this.dropDownButton).element());
-        this.keyboard.press('right'); // TODO: Remove after T730639 fix
     }
 }, () => {
     QUnit.test('focusStateEnabled option should be transfered to list and buttonGroup', function(assert) {
@@ -1290,12 +1935,12 @@ QUnit.module('keyboard navigation', {
 
     QUnit.testInActiveWindow('arrow right and left should select a button', function(assert) {
         this.keyboard.press('right');
-        assert.ok(this.$toggleButton.hasClass('dx-state-focused'), 'toggle button is focused');
-        assert.notOk(this.$actionButton.hasClass('dx-state-focused'), 'action button lose focus');
+        assert.ok(this.$toggleButton.hasClass(FOCUSED_CLASS), 'toggle button is focused');
+        assert.notOk(this.$actionButton.hasClass(FOCUSED_CLASS), 'action button lose focus');
 
         this.keyboard.press('left');
-        assert.notOk(this.$toggleButton.hasClass('dx-state-focused'), 'action button lose');
-        assert.ok(this.$actionButton.hasClass('dx-state-focused'), 'toggle button is focused');
+        assert.notOk(this.$toggleButton.hasClass(FOCUSED_CLASS), 'action button lose');
+        assert.ok(this.$actionButton.hasClass(FOCUSED_CLASS), 'toggle button is focused');
     });
 
     QUnit.testInActiveWindow('action button should be clicked on enter or space', function(assert) {
@@ -1427,11 +2072,11 @@ QUnit.module('keyboard navigation', {
         this.keyboard.press('right').press('enter');
 
         assert.ok(this.dropDownButton.option('dropDownOptions.visible'), 'popup is opened');
-        assert.ok(this.$toggleButton.hasClass('dx-state-focused'), 'toggle button is focused');
+        assert.ok(this.$toggleButton.hasClass(FOCUSED_CLASS), 'toggle button is focused');
 
         this.keyboard.press('space');
         assert.notOk(this.dropDownButton.option('dropDownOptions.visible'), 'popup is closed');
-        assert.ok(this.$toggleButton.hasClass('dx-state-focused'), 'toggle button is focused');
+        assert.ok(this.$toggleButton.hasClass(FOCUSED_CLASS), 'toggle button is focused');
     });
 
     QUnit.testInActiveWindow('list should get first focused item when down arrow pressed after opening', function(assert) {
@@ -1442,7 +2087,7 @@ QUnit.module('keyboard navigation', {
 
         const $firstItem = getList(this.dropDownButton).itemElements().first();
 
-        assert.ok($firstItem.hasClass('dx-state-focused'), 'first list item is focused');
+        assert.ok($firstItem.hasClass(FOCUSED_CLASS), 'first list item is focused');
     });
 
     QUnit.testInActiveWindow('list should get first focused item when up arrow pressed after opening', function(assert) {
@@ -1453,10 +2098,15 @@ QUnit.module('keyboard navigation', {
 
         const $firstItem = getList(this.dropDownButton).itemElements().first();
 
-        assert.ok($firstItem.hasClass('dx-state-focused'), 'first list item is focused');
+        assert.ok($firstItem.hasClass(FOCUSED_CLASS), 'first list item is focused');
     });
 
     QUnit.testInActiveWindow('esc on list should close the popup', function(assert) {
+        if(browser.msie && parseInt(browser.version) <= 11) {
+            assert.ok(true, 'test is ignored in IE11 because it failes on farm');
+            return;
+        }
+
         this.keyboard
             .press('right')
             .press('enter')
@@ -1468,7 +2118,7 @@ QUnit.module('keyboard navigation', {
         assert.notOk(this.dropDownButton.option('dropDownOptions.visible'), 'popup is closed');
 
         // TODO: it is better to focus toggle button when splitButtons is true but it is a complex fix
-        assert.ok(this.$actionButton.hasClass('dx-state-focused'), 'action button is focused');
+        assert.ok(this.$actionButton.hasClass(FOCUSED_CLASS), 'action button is focused');
     });
 
     QUnit.testInActiveWindow('esc on button group should close the popup', function(assert) {
@@ -1478,10 +2128,15 @@ QUnit.module('keyboard navigation', {
             .press('esc');
 
         assert.notOk(this.dropDownButton.option('dropDownOptions.visible'), 'popup is closed');
-        assert.ok(this.$toggleButton.hasClass('dx-state-focused'), 'toggle button is focused');
+        assert.ok(this.$toggleButton.hasClass(FOCUSED_CLASS), 'toggle button is focused');
     });
 
     QUnit.testInActiveWindow('left on list should close the popup', function(assert) {
+        if(browser.msie && parseInt(browser.version) <= 11) {
+            assert.ok(true, 'test is ignored in IE11 because it failes on farm');
+            return;
+        }
+
         this.keyboard
             .press('right')
             .press('enter')
@@ -1493,10 +2148,15 @@ QUnit.module('keyboard navigation', {
         assert.notOk(this.dropDownButton.option('dropDownOptions.visible'), 'popup is closed');
 
         // TODO: it is better to focus toggle button when splitButtons is true but it is a complex fix
-        assert.ok(this.$actionButton.hasClass('dx-state-focused'), 'action button is focused');
+        assert.ok(this.$actionButton.hasClass(FOCUSED_CLASS), 'action button is focused');
     });
 
     QUnit.testInActiveWindow('right on list should close the popup', function(assert) {
+        if(browser.msie && parseInt(browser.version) <= 11) {
+            assert.ok(true, 'test is ignored in IE11 because it failes on farm');
+            return;
+        }
+
         this.keyboard
             .press('right')
             .press('enter')
@@ -1508,7 +2168,7 @@ QUnit.module('keyboard navigation', {
         assert.notOk(this.dropDownButton.option('dropDownOptions.visible'), 'popup is closed');
 
         // TODO: it is better to focus toggle button when splitButtons is true but it is a complex fix
-        assert.ok(this.$actionButton.hasClass('dx-state-focused'), 'action button is focused');
+        assert.ok(this.$actionButton.hasClass(FOCUSED_CLASS), 'action button is focused');
     });
 
     QUnit.testInActiveWindow('down arrow on toggle button should open the popup', function(assert) {
@@ -1520,6 +2180,11 @@ QUnit.module('keyboard navigation', {
     });
 
     QUnit.testInActiveWindow('selection of the item should return focus to the button group', function(assert) {
+        if(browser.msie && parseInt(browser.version) <= 11) {
+            assert.ok(true, 'test is ignored in IE11 because it failes on farm');
+            return;
+        }
+
         this.keyboard
             .press('right')
             .press('down')
@@ -1529,7 +2194,7 @@ QUnit.module('keyboard navigation', {
         listKeyboard.press('enter');
 
         assert.notOk(this.dropDownButton.option('dropDownOptions.visible'), 'popup is closed');
-        assert.ok(this.$toggleButton.hasClass('dx-state-focused'), 'toggle button is focused');
+        assert.ok(this.$toggleButton.hasClass(FOCUSED_CLASS), 'toggle button is focused');
     });
 
     QUnit.testInActiveWindow('tab on button should close the popup', function(assert) {
@@ -1544,6 +2209,11 @@ QUnit.module('keyboard navigation', {
     });
 
     QUnit.testInActiveWindow('tab on list should close the popup', function(assert) {
+        if(browser.msie && parseInt(browser.version) <= 11) {
+            assert.ok(true, 'test is ignored in IE11 because it failes on farm');
+            return;
+        }
+
         this.keyboard
             .press('right')
             .press('down')
@@ -1555,8 +2225,67 @@ QUnit.module('keyboard navigation', {
         const event = listKeyboard.press('tab').event;
 
         assert.notOk(this.dropDownButton.option('dropDownOptions.visible'), 'popup is closed');
-        assert.ok(getButtonGroup(this.dropDownButton).$element().hasClass('dx-state-focused'), 'button group was focused');
+        assert.ok(getButtonGroup(this.dropDownButton).$element().hasClass(FOCUSED_CLASS), 'button group was focused');
         assert.strictEqual(event.isDefaultPrevented(), false, 'event was not prevented and native focus move next');
+    });
+
+    QUnit.testInActiveWindow('focus method call moves focus to buttonGroup', function(assert) {
+        const $buttonGroup = getButtonGroup(this.dropDownButton).$element();
+
+        this.dropDownButton.focus();
+
+        assert.ok($buttonGroup.hasClass(FOCUSED_CLASS), 'button group is focused');
+    });
+
+    QUnit.testInActiveWindow('focusIn handler should be called on dropDownButton focus', function(assert) {
+        const focusInHandler = sinon.stub();
+
+        this.dropDownButton.option({ onFocusIn: focusInHandler });
+        this.dropDownButton.focus();
+
+        assert.ok(focusInHandler.calledOnce, 'focusIn handler was called');
+    });
+
+    QUnit.testInActiveWindow('focusOut handler should be called on buttonGroup blur', function(assert) {
+        const focusOutHandler = sinon.stub();
+        this.dropDownButton.option({ onFocusOut: focusOutHandler });
+        const $buttonGroup = getButtonGroup(this.dropDownButton).$element();
+
+        this.dropDownButton.focus();
+        eventsEngine.trigger($buttonGroup, 'focusout');
+
+        assert.ok(focusOutHandler.calledOnce, 'focusOut handler was called');
+    });
+
+    QUnit.module('registerKeyHandler', () => {
+        QUnit.test('should add keyboard event handler with correct context', function(assert) {
+            assert.expect(1);
+
+            const handler = function() {
+                assert.strictEqual(this.NAME, 'dxDropDownButton', 'context is correct');
+            };
+            this.dropDownButton.registerKeyHandler('backspace', handler);
+
+            this.keyboard.press('backspace');
+        });
+
+        [
+            ['downArrow', true],
+            ['upArrow', true],
+            ['tab', false],
+            ['escape', false]
+        ].forEach(([key, opened]) => {
+            QUnit.test(`should work correctly with ${key}`, function(assert) {
+                const handler = sinon.stub();
+                this.dropDownButton.registerKeyHandler(key, handler);
+                this.dropDownButton.focus();
+
+                this.keyboard.press(key);
+
+                assert.strictEqual(this.dropDownButton.option('opened'), opened, 'default handler was called');
+                assert.ok(handler.calledOnce, 'custom handler was called');
+            });
+        });
     });
 });
 

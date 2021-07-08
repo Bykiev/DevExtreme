@@ -12,7 +12,7 @@ import config from '../../core/config';
 import { orderEach, deepExtendArraySafe } from '../../core/utils/object';
 import errors from '../widget/ui.errors';
 import modules from './ui.grid_core.modules';
-import { isDateType, getFormatByDataType, getDisplayValue, normalizeSortingInfo, equalSortParameters } from './ui.grid_core.utils';
+import { isDateType, getFormatByDataType, getDisplayValue, normalizeSortingInfo, equalSortParameters, equalFilterParameters } from './ui.grid_core.utils';
 import { normalizeIndexes } from '../../core/utils/array';
 import inflector from '../../core/utils/inflector';
 import dateSerialization from '../../core/utils/date_serialization';
@@ -213,7 +213,7 @@ module.exports = {
                             columnOptions = extend({}, columnOptions, { dataField: userStateColumnOptions.dataField });
                         }
                         const calculatedColumnOptions = that._createCalculatedColumnOptions(columnOptions, bandColumn);
-                        if(columnOptions.dataField && !columnOptions.type) {
+                        if(!columnOptions.type) {
                             result = { headerId: `dx-col-${globalColumnId++}` };
                         }
                         result = deepExtendArraySafe(result, DEFAULT_COLUMN_OPTIONS);
@@ -752,7 +752,7 @@ module.exports = {
                 }
             };
 
-            const updateSortOrderWhenGrouping = function(column, groupIndex, prevGroupIndex) {
+            const updateSortOrderWhenGrouping = function(that, column, groupIndex, prevGroupIndex) {
                 const columnWasGrouped = prevGroupIndex >= 0;
 
                 if(groupIndex >= 0) {
@@ -760,7 +760,17 @@ module.exports = {
                         column.lastSortOrder = column.sortOrder;
                     }
                 } else {
-                    column.sortOrder = column.lastSortOrder;
+                    const sortMode = that.option('sorting.mode');
+                    let sortOrder = column.lastSortOrder;
+
+                    if(sortMode === 'single') {
+                        const sortedByAnotherColumn = that._columns.some(col => col !== column && isDefined(col.sortIndex));
+                        if(sortedByAnotherColumn) {
+                            sortOrder = undefined;
+                        }
+                    }
+
+                    column.sortOrder = sortOrder;
                 }
             };
 
@@ -793,7 +803,7 @@ module.exports = {
                 if(prevValue !== value) {
                     if(optionName === 'groupIndex' || optionName === 'calculateGroupValue') {
                         changeType = 'grouping';
-                        updateSortOrderWhenGrouping(column, value, prevValue);
+                        updateSortOrderWhenGrouping(that, column, value, prevValue);
                     } else if(optionName === 'sortIndex' || optionName === 'sortOrder' || optionName === 'calculateSortValue') {
                         changeType = 'sorting';
                     } else {
@@ -869,7 +879,7 @@ module.exports = {
 
                 rowIndex = rowIndex || 0;
                 columns[rowIndex] && iteratorUtils.each(columns[rowIndex], function(_, column) {
-                    if(column.ownerBand === bandColumnID || isDefined(column.groupIndex)) {
+                    if(column.ownerBand === bandColumnID || column.type === GROUP_COMMAND_COLUMN_NAME) {
                         if(!column.isBand || !column.colspan) {
                             if((!column.command || rowIndex < 1)) {
                                 result.push(column);
@@ -1007,9 +1017,31 @@ module.exports = {
                 });
             };
 
-            function resetBandColumnsCache(that) {
+            const resetBandColumnsCache = (that) => {
                 that._bandColumnsCache = undefined;
-            }
+            };
+
+            const findColumn = (columns, identifier) => {
+                const identifierOptionName = isString(identifier) && identifier.substr(0, identifier.indexOf(':'));
+                let column;
+
+                if(identifier === undefined) return;
+
+                if(identifierOptionName) {
+                    identifier = identifier.substr(identifierOptionName.length + 1);
+                }
+
+                if(identifierOptionName) {
+                    column = columns.filter(column => ('' + column[identifierOptionName]) === identifier)[0];
+                } else {
+                    ['index', 'name', 'dataField', 'caption'].some((optionName) => {
+                        column = columns.filter(column => column[optionName] === identifier)[0];
+                        return !!column;
+                    });
+                }
+
+                return column;
+            };
 
             return {
                 _getExpandColumnOptions: function() {
@@ -1395,7 +1427,15 @@ module.exports = {
                         }
                     }
 
-                    return result;
+                    return result.map(columns => {
+                        return columns.map(column => {
+                            const newColumn = { ...column };
+                            if(newColumn.headerId) {
+                                newColumn.headerId += '-fixed';
+                            }
+                            return newColumn;
+                        });
+                    });
                 },
                 _isColumnFixing: function() {
                     let isColumnFixing = this.option('columnFixing.enabled');
@@ -1725,8 +1765,10 @@ module.exports = {
                     if(allowSorting && column && column.allowSorting) {
                         if(needResetSorting && !isDefined(column.groupIndex)) {
                             iteratorUtils.each(that._columns, function(index) {
-                                if(index !== columnIndex && this.sortOrder && !isDefined(this.groupIndex)) {
-                                    delete this.sortOrder;
+                                if(index !== columnIndex && this.sortOrder) {
+                                    if(!isDefined(this.groupIndex)) {
+                                        delete this.sortOrder;
+                                    }
                                     delete this.sortIndex;
                                 }
                             });
@@ -1944,45 +1986,47 @@ module.exports = {
                     }
                 },
                 updateColumns: function(dataSource, forceApplying) {
-                    const that = this;
-
                     if(!forceApplying) {
-                        that.updateSortingGrouping(dataSource);
+                        this.updateSortingGrouping(dataSource);
                     }
 
                     if(!dataSource || dataSource.isLoaded()) {
-                        const sortParameters = dataSource ? dataSource.sort() || [] : that.getSortDataSourceParameters();
-                        const groupParameters = dataSource ? dataSource.group() || [] : that.getGroupDataSourceParameters();
+                        const sortParameters = dataSource ? dataSource.sort() || [] : this.getSortDataSourceParameters();
+                        const groupParameters = dataSource ? dataSource.group() || [] : this.getGroupDataSourceParameters();
+                        const filterParameters = dataSource?.lastLoadOptions().filter;
 
-                        that._customizeColumns(that._columns);
+                        this._customizeColumns(this._columns);
 
-                        updateIndexes(that);
+                        updateIndexes(this);
 
-                        const columns = that._columns;
-                        return when(that.refresh(true)).always(function() {
-                            if(that._columns !== columns) return;
+                        const columns = this._columns;
+                        return when(this.refresh(true)).always(() => {
+                            if(this._columns !== columns) return;
 
-                            that._updateChanges(dataSource, { sorting: sortParameters, grouping: groupParameters });
+                            this._updateChanges(dataSource, { sorting: sortParameters, grouping: groupParameters, filtering: filterParameters });
 
-                            fireColumnsChanged(that);
+                            fireColumnsChanged(this);
                         });
                     }
                 },
                 _updateChanges: function(dataSource, parameters) {
-                    const that = this;
-
                     if(dataSource) {
-                        that.updateColumnDataTypes(dataSource);
-                        that._dataSourceApplied = true;
+                        this.updateColumnDataTypes(dataSource);
+                        this._dataSourceApplied = true;
                     }
 
-                    if(!equalSortParameters(parameters.sorting, that.getSortDataSourceParameters())) {
-                        updateColumnChanges(that, 'sorting');
+                    if(!equalSortParameters(parameters.sorting, this.getSortDataSourceParameters())) {
+                        updateColumnChanges(this, 'sorting');
                     }
-                    if(!equalSortParameters(parameters.grouping, that.getGroupDataSourceParameters())) {
-                        updateColumnChanges(that, 'grouping');
+                    if(!equalSortParameters(parameters.grouping, this.getGroupDataSourceParameters())) {
+                        updateColumnChanges(this, 'grouping');
                     }
-                    updateColumnChanges(that, 'columns');
+
+                    const dataController = this.getController('data');
+                    if(dataController && !equalFilterParameters(parameters.filtering, dataController.getCombinedFilter())) {
+                        updateColumnChanges(this, 'filtering');
+                    }
+                    updateColumnChanges(this, 'columns');
                 },
                 updateSortingGrouping: function(dataSource, fromDataSource) {
                     const that = this;
@@ -1997,7 +2041,13 @@ module.exports = {
                                     const selector = sortParameters[i].selector;
                                     const isExpanded = sortParameters[i].isExpanded;
 
-                                    if(selector === column.dataField || selector === column.name || selector === column.selector || selector === column.calculateCellValue || selector === column.calculateGroupValue) {
+                                    if(selector === column.dataField ||
+                                        selector === column.name ||
+                                        selector === column.selector ||
+                                        selector === column.calculateCellValue ||
+                                        selector === column.calculateGroupValue ||
+                                        selector === column.calculateDisplayValue
+                                    ) {
                                         column.sortOrder = column.sortOrder || (sortParameters[i].desc ? 'desc' : 'asc');
 
                                         if(isExpanded !== undefined) {
@@ -2063,7 +2113,7 @@ module.exports = {
                     columnIndex = filter.columnIndex !== undefined ? filter.columnIndex : columnIndex;
                     filterValue = filter.filterValue !== undefined ? filter.filterValue : filterValue;
 
-                    if(isString(filter[0])) {
+                    if(isString(filter[0]) && filter[0] !== '!') {
                         const column = that.columnOption(filter[0]);
 
                         if(remoteFiltering) {
@@ -2092,29 +2142,8 @@ module.exports = {
                 },
                 columnOption: function(identifier, option, value, notFireEvent) {
                     const that = this;
-                    const identifierOptionName = isString(identifier) && identifier.substr(0, identifier.indexOf(':'));
                     const columns = that._columns.concat(that._commandColumns);
-                    let column;
-
-                    if(identifier === undefined) return;
-
-                    if(identifierOptionName) {
-                        identifier = identifier.substr(identifierOptionName.length + 1);
-                    }
-
-                    for(let i = 0; i < columns.length; i++) {
-                        if(identifierOptionName) {
-                            if(('' + columns[i][identifierOptionName]) === identifier) {
-                                column = columns[i];
-                                break;
-                            }
-                        } else if(columns[i].index === identifier || columns[i].name === identifier ||
-                            columns[i].dataField === identifier || columns[i].caption === identifier) {
-
-                            column = columns[i];
-                            break;
-                        }
-                    }
+                    const column = findColumn(columns, identifier);
 
                     if(column) {
                         if(arguments.length === 1) {
@@ -2167,6 +2196,12 @@ module.exports = {
                         }
                     }
                     return -1;
+                },
+
+                getVisibleIndexByColumn: function(column, rowIndex) {
+                    const visibleColumns = this.getVisibleColumns(rowIndex);
+                    const visibleColumn = visibleColumns.filter(col => col.index === column.index && col.command === column.command)[0];
+                    return visibleColumns.indexOf(visibleColumn);
                 },
 
                 getVisibleColumnIndex: function(id, rowIndex) {

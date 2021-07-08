@@ -35,7 +35,7 @@ QUnit.module('format: api value changing', moduleConfig, () => {
     QUnit.test('number type of input should be converted to tel on mobile device when inputMode is unsupported', function(assert) {
         const realDeviceMock = sinon.stub(devices, 'real').returns({ deviceType: 'mobile' });
         const realBrowser = browser;
-        const $element = $('<div>').appendTo('body');
+        const $element = $('<div>').appendTo('#qunit-fixture');
 
         try {
             browser.chrome = true;
@@ -66,7 +66,7 @@ QUnit.module('format: api value changing', moduleConfig, () => {
 
     QUnit.test('number type of input should be converted to text on desktop device', function(assert) {
         const realDeviceMock = sinon.stub(devices, 'real').returns({ deviceType: 'desktop' });
-        const $element = $('<div>').appendTo('body');
+        const $element = $('<div>').appendTo('#qunit-fixture');
 
         try {
             const instance = $element.dxNumberBox({
@@ -226,6 +226,50 @@ QUnit.module('format: sign and minus button', moduleConfig, () => {
         assert.deepEqual(this.keyboard.caret(), { start: 3, end: 3 }, 'caret is correct');
         this.keyboard.change();
         assert.equal(this.instance.option('value'), 123.456, 'value has been changed after valueChange event');
+    });
+
+    QUnit.test('incorrect input should not reset the sign if minus is specific character (T920936)', function(assert) {
+        this.instance.option({
+            format: '#0.00;M#0.00',
+            value: -14500.55
+        });
+
+        this.keyboard.caret(6).type('a').change();
+        assert.strictEqual(this.input.val(), 'M14500.55', 'value is correct');
+        assert.strictEqual(this.instance.option('value'), -14500.55, 'value is correct');
+    });
+
+    QUnit.test('incorrect input should not reset the sign if minus consists of several characters (T920936)', function(assert) {
+        this.instance.option({
+            format: '#0.00;$ (#0.00)',
+            value: -14500.55
+        });
+
+        this.keyboard.caret(6).type('a').change();
+        assert.strictEqual(this.input.val(), '$ (14500.55)', 'value is correct');
+        assert.strictEqual(this.instance.option('value'), -14500.55, 'value is correct');
+    });
+
+    QUnit.test('incorrect input should not reset the sign if minus consists of several specific characters (T920936)', function(assert) {
+        this.instance.option({
+            format: '#0.00;$*/\\?||(?)^   & [({#0.00])}',
+            value: -14500.55
+        });
+
+        this.keyboard.caret(6).type('a').change();
+        assert.strictEqual(this.input.val(), '$*/\\?||(?)^   & [({14500.55])}', 'value is correct');
+        assert.strictEqual(this.instance.option('value'), -14500.55, 'value is correct');
+    });
+
+    QUnit.test('correct input should not reset the sign if minus is specific character (T920936)', function(assert) {
+        this.instance.option({
+            format: '#0.00;M#0.00',
+            value: -14500.55
+        });
+
+        this.keyboard.caret(6).type('1').change();
+        assert.strictEqual(this.input.val(), 'M145001.55', 'value is correct');
+        assert.strictEqual(this.instance.option('value'), -145001.55, 'value is correct');
     });
 
     QUnit.test('pressing numpad minus button should revert the number', function(assert) {
@@ -391,6 +435,22 @@ QUnit.module('format: sign and minus button', moduleConfig, () => {
         assert.equal(this.input.val(), '<<123.4>>', 'value is correct');
         assert.deepEqual(this.keyboard.caret(), { start: 3, end: 4 }, 'caret preserved');
     });
+
+    QUnit.test('typing zero-based value should not revert negative sign', function(assert) {
+        this.instance.option({
+            format: '0.00',
+            value: -1.1
+        });
+
+        this.keyboard
+            .caret({ start: 1, end: 5 })
+            .type('0.51')
+            .change();
+
+        this.clock.tick();
+        assert.strictEqual(this.input.val(), '-0.51', 'text is correct');
+        assert.strictEqual(this.instance.option('value'), -0.51, 'value is correct');
+    });
 });
 
 QUnit.module('format: fixed point format', moduleConfig, () => {
@@ -399,6 +459,15 @@ QUnit.module('format: fixed point format', moduleConfig, () => {
 
         this.keyboard.type('1');
         assert.equal(this.input.val(), '1.00', 'required digits was added on first input');
+    });
+
+    QUnit.test('Value should be formatted after change on focusout if mask behavior is used (T942114)', function(assert) {
+        this.instance.option('format', '#,##0.00\'0\'');
+
+        this.keyboard
+            .type('1.111')
+            .change();
+        assert.strictEqual(this.instance.option('value'), 1.11, 'value is formatted');
     });
 
     QUnit.test('value option should have right value after typing when format is enabled (T829935)', function(assert) {
@@ -901,6 +970,11 @@ QUnit.module('format: text input', moduleConfig, () => {
         assert.strictEqual(this.keyboard.event.isDefaultPrevented(), false, 'keydown event is not prevented');
     });
 
+    QUnit.test('command+v should not be prevented (T988724)', function(assert) {
+        this.keyboard.keyDown('v', { metaKey: true });
+        assert.strictEqual(this.keyboard.event.isDefaultPrevented(), false, 'keydown event is not prevented');
+    });
+
     QUnit.test('decimal point input should be prevented when it is restricted by the format', function(assert) {
         this.instance.option({
             format: '#0',
@@ -984,6 +1058,23 @@ QUnit.module('format: text input', moduleConfig, () => {
 
         assert.notOk(caretIsUpdatedOnFocusOut);
     });
+
+    QUnit.testInActiveWindow('caret position should be updated correctly after setting the "format" options runtime and "valueChangeEvent" is "input"', function(assert) {
+        const $element = $('#widget');
+        const instance = $element.dxNumberBox({
+            valueChangeEvent: 'input'
+        }).dxNumberBox('instance');
+
+        instance.option('format', '$###,##0');
+
+        const keyboard = keyboardMock($element.find(`.${INPUT_CLASS}`), true);
+
+        keyboard
+            .caret(2) // $0|
+            .type('123456'); // $123,456
+        assert.deepEqual(keyboard.caret(), { start: 8, end: 8 }, 'caret position is OK');
+        assert.strictEqual(instance.option('value'), 123456, 'Widget has the expected value');
+    });
 });
 
 QUnit.module('format: incomplete value', moduleConfig, () => {
@@ -1027,7 +1118,7 @@ QUnit.module('format: incomplete value', moduleConfig, () => {
     QUnit.test('paste of value should call valueChanged event on keyup', function(assert) {
         const valueChangedStub = sinon.stub();
         const originalIE = browser.msie;
-        const $element = $('<div>').appendTo('body');
+        const $element = $('<div>').appendTo('#qunit-fixture');
 
         try {
             browser.msie = false;
@@ -1049,6 +1140,7 @@ QUnit.module('format: incomplete value', moduleConfig, () => {
             assert.ok(valueChangedStub.calledOnce, 'valueChanged event was called');
         } finally {
             browser.msie = originalIE;
+            $element.remove();
         }
     });
 
@@ -1057,7 +1149,7 @@ QUnit.module('format: incomplete value', moduleConfig, () => {
         const valueChangedStub = sinon.stub();
         const originalIE = browser.msie;
         const originalVersion = browser.version;
-        const $element = $('<div>').appendTo('body');
+        const $element = $('<div>').appendTo('#qunit-fixture');
 
         try {
             browser.msie = true;
@@ -1081,6 +1173,7 @@ QUnit.module('format: incomplete value', moduleConfig, () => {
         } finally {
             browser.msie = originalIE;
             browser.version = originalVersion;
+            $element.remove();
         }
     });
 
@@ -1482,26 +1575,36 @@ QUnit.module('format: removing', moduleConfig, () => {
         assert.equal(this.input.val(), '0.00', 'value is correct');
     });
 
-    QUnit.test('removing all digits should save the sign', function(assert) {
+    QUnit.test('removing all digits should change value to 0 even if it\'s negative (T892552)', function(assert) {
         this.instance.option({
-            format: '#0 kg',
+            format: '#,##0.## ₽',
             value: -1
         });
 
-        this.keyboard.caret({ start: 2, end: 2 }).press('backspace').input('backspace');
+        this.keyboard
+            .caret({ start: 0, end: 4 })
+            .press('backspace')
+            .input('backspace')
+            .change();
 
-        assert.strictEqual(this.input.val(), '-0 kg', 'text is correct');
+        assert.strictEqual(this.input.val(), '0 ₽', 'text is correct');
+        assert.strictEqual(this.instance.option('value'), 0, 'value is reseted');
     });
 
-    QUnit.test('removing last digit 0 should save the sign', function(assert) {
+    QUnit.test('removing last digit should change value to 0 even if it\'s negative (T892552)', function(assert) {
         this.instance.option({
-            format: '#0 kg',
-            value: -0
+            format: '#,##0.## ₽',
+            value: -1
         });
 
-        this.keyboard.caret({ start: 2, end: 2 }).press('backspace').input('backspace');
+        this.keyboard
+            .caret({ start: 2, end: 2 })
+            .press('backspace')
+            .input('backspace')
+            .change();
 
-        assert.strictEqual(this.input.val(), '-0 kg', 'text is correct');
+        assert.strictEqual(this.input.val(), '0 ₽', 'text is correct');
+        assert.strictEqual(this.instance.option('value'), 0, 'value is reseted');
     });
 
     QUnit.test('removing digit if decimal format', function(assert) {
@@ -1968,6 +2071,68 @@ QUnit.module('format: custom parser and formatter', moduleConfig, () => {
         assert.equal(this.input.val(), '$ 1234.56', 'text is correct');
         assert.equal(this.instance.option('value'), 1234.56, 'value is correct');
     });
+
+    QUnit.test('editor should create a related LDML pattern for custom formatter only once', function(assert) {
+        let counter = 0;
+        this.instance.option({
+            value: null,
+            format: {
+                formatter: (val) => {
+                    counter++;
+                    return String(val);
+                }
+            }
+        });
+
+        const callCountAfterCreateLdmlPattern = counter;
+        this.keyboard.type('1');
+        assert.strictEqual(counter, callCountAfterCreateLdmlPattern + 1, 'initial formatting + 1 -> format after typing');
+
+        this.keyboard.type('1');
+        assert.strictEqual(counter, callCountAfterCreateLdmlPattern + 1 + 1, '+ 1 -> format after typing');
+    });
+
+    QUnit.test('editor should create a new LDML pattern for custom formatter after "format" option change', function(assert) {
+        let counter = 0;
+        const formatter = (val) => {
+            counter++;
+            return String(val);
+        };
+        this.instance.option({
+            value: null,
+            format: {
+                formatter
+            }
+        });
+
+        const callCountAfterCreateLdmlPattern = counter;
+        this.keyboard.type('1');
+        assert.strictEqual(counter, callCountAfterCreateLdmlPattern + 1, 'initial formatting + 1 -> format after typing');
+
+        counter = 0;
+        this.instance.option('format', { formatter: formatter.bind(this) });
+        assert.strictEqual(counter, callCountAfterCreateLdmlPattern, 'LDML pattern recalculated');
+    });
+
+    QUnit.test('editor should not try to create a related LDML pattern for custom formatter and parser', function(assert) {
+        let counter = 0;
+        this.instance.option({
+            value: null,
+            format: {
+                formatter: (val) => {
+                    counter++;
+                    return String(val);
+                },
+                parser: (text) => parseFloat(text.replace(/[^0-9.-]/g, ''))
+            }
+        });
+
+        this.keyboard.type('1');
+        assert.strictEqual(counter, 4, '1 -> initial formatting + 3 -> format after typing');
+
+        this.keyboard.type('1');
+        assert.strictEqual(counter, 7, '+ 3 -> format after typing');
+    });
 });
 
 QUnit.module('stubs', moduleConfig, function() {
@@ -1995,5 +2160,64 @@ QUnit.module('stubs', moduleConfig, function() {
             assert.equal(this.input.val(), expectedText, 'text is correct');
             assert.equal(this.instance.option('value'), expectedValue, 'value is correct');
         });
+    });
+});
+
+QUnit.module('symbol with dot in format', {
+    beforeEach: function() {
+        this.$element = $('#numberbox').dxNumberBox({
+            useMaskBehavior: true,
+            value: 1.5,
+            format: '\'.\' 0.00'
+        });
+        this.clock = sinon.useFakeTimers();
+        this.$input = this.$element.find(`.${INPUT_CLASS}`);
+        this.instance = this.$element.dxNumberBox('instance');
+        this.keyboard = keyboardMock(this.$input, true);
+    },
+    afterEach: function() {
+        this.clock.restore();
+    }
+}, function() {
+    QUnit.test('should not change max precision (T972648)', function(assert) {
+        this.keyboard
+            .caret(4)
+            .type('89')
+            .change();
+
+        assert.strictEqual(this.keyboard.caret().start, 6, 'caret position is correct');
+        assert.strictEqual(this.instance.option('value'), 1.89, 'value is correct');
+    });
+
+    QUnit.test('should not affect caret position on focusin', function(assert) {
+        this.keyboard
+            .caret(6)
+            .focus();
+        this.clock.tick(CARET_TIMEOUT_DURATION);
+
+        assert.deepEqual(this.keyboard.caret(), { start: 3, end: 3 }, 'caret position is correct');
+    });
+
+    QUnit.test('should not affect integer part length calculation', function(assert) {
+        this.instance.option('format', '\'.\' 00.0');
+
+        this.keyboard
+            .caret(4)
+            .type('22')
+            .change();
+
+        assert.strictEqual(this.instance.option('value'), 22.5, 'value is correct');
+    });
+
+    QUnit.test('should not prevent value formatting on every input', function(assert) {
+        this.instance.option({
+            format: '\'.\' 00.00'
+        });
+
+        this.keyboard
+            .caret(4)
+            .type('2233445567');
+
+        assert.strictEqual(this.$input.val(), '. 67.50', 'value is correct');
     });
 });

@@ -387,6 +387,11 @@
  */
 
 /**
+ * @typedef {string} Enums.GridFilterOperations
+ * @enum {'='|'<>'|'<'|'<='|'>'|'>='|'contains'|'endswith'|'isblank'|'isnotblank'|'notcontains'|'startswith'|'between'|'anyof'|'noneof'}
+ */
+
+/**
  * @typedef {string} Enums.FilterType
  * @enum {'exclude'|'include'}
  */
@@ -1018,12 +1023,12 @@
 
 /**
  * @typedef {string} Enums.GridCommandColumnType
- * @enum {'adaptive'|'buttons'|'detailExpand'|'groupExpand'|'selection'}
+ * @enum {'adaptive'|'buttons'|'detailExpand'|'groupExpand'|'selection'|'drag'}
  */
 
 /**
  * @typedef {string} Enums.TreeListCommandColumnType
- * @enum {'adaptive'|'buttons'}
+ * @enum {'adaptive'|'buttons'|'drag'}
  */
 
 /**
@@ -1067,12 +1072,17 @@
  */
 
 /**
+ * @typedef {string} Enums.FileManagerViewArea
+ * @enum {'navPane'|'itemView'}
+ */
+
+/**
  * @typedef {string} Enums.DiagramDataLayoutType
  * @enum {'auto'|'off'|'tree'|'layered'}
  */
 /**
  * @typedef {string} Enums.DiagramDataLayoutOrientation
- * @enum {'auto'|'vertical'|'horizontal'}
+ * @enum {'vertical'|'horizontal'}
  */
 
 /**

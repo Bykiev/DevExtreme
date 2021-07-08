@@ -51,6 +51,8 @@ const TD = '<td>';
 const DIV = '<div>';
 const TEST_HEIGHT = 66666;
 
+const FIELD_CALCULATED_OPTIONS = ['allowSorting', 'allowSortingBySummary', 'allowFiltering', 'allowExpandAll'];
+
 function getArraySum(array) {
     let sum = 0;
 
@@ -438,6 +440,17 @@ const PivotGrid = Widget.inherit({
                 */
                 showPane: true
 
+                /**
+                * @name dxPivotGridOptions.loadPanel.shading
+                * @type boolean
+                * @default false
+                */
+
+                /**
+                * @name dxPivotGridOptions.loadPanel.shadingColor
+                * @type string
+                * @default ''
+                */
             },
             texts: {
                 /**
@@ -617,6 +630,21 @@ const PivotGrid = Widget.inherit({
         });
     },
 
+    _updateCalculatedOptions: function(fields) {
+        const that = this;
+        each(fields, function(index, field) {
+            each(FIELD_CALCULATED_OPTIONS, function(_, optionName) {
+                const isCalculated = field._initProperties
+                    && (optionName in field._initProperties)
+                    && (field._initProperties[optionName] === undefined);
+                const needUpdate = field[optionName] === undefined || isCalculated;
+                if(needUpdate) {
+                    setFieldProperty(field, optionName, that.option(optionName));
+                }
+            });
+        });
+    },
+
     _getDataControllerOptions: function() {
         const that = this;
         return {
@@ -633,13 +661,7 @@ const PivotGrid = Widget.inherit({
             hideEmptySummaryCells: that.option('hideEmptySummaryCells'),
 
             onFieldsPrepared: function(fields) {
-                each(fields, function(index, field) {
-                    each(['allowSorting', 'allowSortingBySummary', 'allowFiltering', 'allowExpandAll'], function(_, optionName) {
-                        if(field[optionName] === undefined) {
-                            setFieldProperty(field, optionName, that.option(optionName));
-                        }
-                    });
-                });
+                that._updateCalculatedOptions(fields);
             }
         };
     },
@@ -709,6 +731,11 @@ const PivotGrid = Widget.inherit({
 
     _optionChanged: function(args) {
         const that = this;
+
+        if(FIELD_CALCULATED_OPTIONS.indexOf(args.name) >= 0) {
+            const fields = this.getDataSource().fields();
+            this._updateCalculatedOptions(fields);
+        }
 
         switch(args.name) {
             case 'dataSource':
@@ -1253,6 +1280,14 @@ const PivotGrid = Widget.inherit({
         const that = this;
         const element = that.$element();
 
+        if(isDefined(that._hasHeight)) {
+            const height = that.option('height') || that.$element().get(0).style.height;
+
+            if(height && (that._hasHeight ^ height !== 'auto')) {
+                that._hasHeight = null;
+            }
+        }
+
         if(isDefined(that._hasHeight) || element.is(':hidden')) {
             return;
         }
@@ -1428,9 +1463,7 @@ const PivotGrid = Widget.inherit({
     _update: function(isFirstDrawing) {
         const that = this;
         const updateHandler = function() {
-            that.updateDimensions().done(function() {
-                that._subscribeToEvents(that._columnsArea, that._rowsArea, that._dataArea);
-            });
+            that.updateDimensions();
         };
         if(that._needDelayResizing(that._dataArea.getData()) && isFirstDrawing) {
             setTimeout(updateHandler);
@@ -1588,8 +1621,14 @@ const PivotGrid = Widget.inherit({
             let dataAreaHeight = 0;
             if(that._hasHeight) {
                 filterAreaHeight = filterHeaderCell.height();
+
+                const $dataHeader = tableElement.find('.dx-data-header');
+                const dataHeaderHeight = msie
+                    ? getSize($dataHeader.get(0), 'height', { paddings: false, borders: false, margins: false })
+                    : $dataHeader.height();
+
                 bordersWidth = getCommonBorderWidth([columnAreaCell, dataAreaCell, tableElement, columnHeaderCell, filterHeaderCell], 'height');
-                dataAreaHeight = that.$element().height() - filterAreaHeight - tableElement.find('.dx-data-header').height() - (Math.max(dataArea.headElement().height(), columnAreaCell.height(), descriptionCellHeight) + bordersWidth);
+                dataAreaHeight = that.$element().height() - filterAreaHeight - dataHeaderHeight - (Math.max(dataArea.headElement().height(), columnAreaCell.height(), descriptionCellHeight) + bordersWidth);
             }
 
             totalWidth = dataArea.tableElement().width();
@@ -1609,6 +1648,12 @@ const PivotGrid = Widget.inherit({
             groupWidth = elementWidth - rowsAreaWidth - bordersWidth;
 
             groupWidth = groupWidth > 0 ? groupWidth : totalWidth;
+            const diff = totalWidth - groupWidth;
+            const needAdjustWidthOnZoom = diff >= 0 && diff <= 2;
+            if(needAdjustWidthOnZoom) { // T914454
+                adjustSizeArray(resultWidths, diff);
+                totalWidth = groupWidth;
+            }
 
             hasRowsScroll = that._hasHeight && calculateHasScroll(dataAreaHeight, totalHeight);
             hasColumnsScroll = calculateHasScroll(groupWidth, totalWidth);
@@ -1727,6 +1772,7 @@ const PivotGrid = Widget.inherit({
 
                 when.apply($, updateScrollableResults).done(function() {
                     that._updateScrollPosition(columnsArea, rowsArea, dataArea);
+                    that._subscribeToEvents(columnsArea, rowsArea, dataArea);
                     d.resolve();
                 });
             });

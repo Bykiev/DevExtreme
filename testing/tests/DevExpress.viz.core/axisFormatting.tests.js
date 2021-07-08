@@ -208,10 +208,6 @@ QUnit.test('format numbers in exponential notation', function(assert) {
     this.testTickLabelFormat(assert, [1.03e-7], 2e-10, ['1.030E-7']);
 });
 
-QUnit.test('format float number. tickInterval = 2.5', function(assert) {
-    this.testTickLabelFormat(assert, [18.5], 2.5, ['18.5']);
-});
-
 QUnit.test('formatting logarithmic ticks', function(assert) {
     this.testFormat(assert, {
         type: 'logarithmic',
@@ -220,7 +216,7 @@ QUnit.test('formatting logarithmic ticks', function(assert) {
         label: {
             visible: true
         }
-    }, [0.00001, 0.0001, 0.001, 0.01, 0.1, 0, 1, 10, 100, 1000, 10000, 1e18 ], 1,
+    }, [0.00000999999999, 0.0000999999999, 0.000999999999, 0.00999999999, 0.0999999999, 0, 1, 10, 100, 1000, 10000, 1e18 ], 1,
     [ '1E-5', '0.0001', '0.001', '0.01', '0.1', '0', '1', '10', '100', '1K', '10K', '1E+18']);
 });
 
@@ -1012,6 +1008,7 @@ QUnit.test('setPercentLabelFormat for default format', function(assert) {
 
 QUnit.test('setPercentLabelFormat for auto set up format (datetime)', function(assert) {
     this.createAxis({});
+    this.axis.setBusinessRange({ min: new Date(2010, 1, 1), max: new Date(2010, 3, 1) });
     this.generatedTicks = [new Date(2010, 1, 1), new Date(2010, 2, 1), new Date(2010, 3, 1)];
 
     this.axis.draw(this.canvas);
@@ -1031,6 +1028,7 @@ QUnit.test('resetAutoLabelFormat for default format', function(assert) {
 
 QUnit.test('resetAutoLabelFormat for auto set up format (datetime without setPercentLabelFormat call)', function(assert) {
     this.createAxis({});
+    this.axis.setBusinessRange({ min: new Date(2010, 1, 1), max: new Date(2010, 3, 1) });
     this.generatedTicks = [new Date(2010, 1, 1), new Date(2010, 2, 1), new Date(2010, 3, 1)];
 
     this.axis.draw(this.canvas);
@@ -1171,6 +1169,7 @@ QUnit.test('No value - return null', function(assert) {
             visible: false
         }
     });
+    this.axis.setBusinessRange({ });
     this.generatedTickInterval = 100;
     this.axis.draw(this.canvas);
 
@@ -1185,6 +1184,7 @@ QUnit.test('No format specified - use auto format', function(assert) {
             visible: false
         }
     });
+    this.axis.setBusinessRange({ });
     this.generatedTickInterval = 100;
     this.axis.draw(this.canvas);
 
@@ -1200,6 +1200,7 @@ QUnit.test('Value is string - retrun as is', function(assert) {
             visible: false
         }
     });
+    this.axis.setBusinessRange({ });
     this.generatedTickInterval = 100;
     this.axis.draw(this.canvas);
 
@@ -1218,6 +1219,7 @@ QUnit.test('Axis label has format - use axis label format', function(assert) {
             visible: false
         }
     });
+    this.axis.setBusinessRange({ });
     this.generatedTickInterval = 100;
     this.axis.draw(this.canvas);
 
@@ -1236,6 +1238,7 @@ QUnit.test('Pass options with format, axis label has format - use passed format'
             visible: false
         }
     });
+    this.axis.setBusinessRange({ });
     this.generatedTickInterval = 100;
     this.axis.draw(this.canvas);
 
@@ -1251,6 +1254,7 @@ QUnit.test('T297683. Axis label has format with precision = 0', function(assert)
             precision: 0
         }
     });
+    this.axis.setBusinessRange({ });
     this.generatedTickInterval = 100;
     this.axis.draw(this.canvas);
 

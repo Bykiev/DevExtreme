@@ -136,6 +136,17 @@ const isRowEditMode = function(that) {
     return ROW_BASED_MODES.indexOf(editMode) !== -1;
 };
 
+const isEditingCell = function(isEditRow, cellOptions) {
+    return cellOptions.isEditing || isEditRow && cellOptions.column.allowEditing;
+};
+
+const isEditingOrShowEditorAlwaysDataCell = function(isEditRow, cellOptions) {
+    const isCommandCell = !!cellOptions.column.command;
+    const isEditing = isEditingCell(isEditRow, cellOptions);
+    const isEditorCell = !isCommandCell && (isEditing || cellOptions.column.showEditorAlways);
+    return cellOptions.rowType === 'data' && isEditorCell;
+};
+
 const EditingController = modules.ViewController.inherit((function() {
     const getDefaultEditorTemplate = function(that) {
         return function(container, options) {
@@ -235,6 +246,8 @@ const EditingController = modules.ViewController.inherit((function() {
                 that.createAction('onRowRemoved', { excludeValidators: ['disabled', 'readOnly'] });
                 // chrome 73+
                 let $pointerDownTarget;
+                let isResizing;
+                that._pointerUpEditorHandler = () => { isResizing = that.getController('columnsResizer')?.isResizing(); };
                 that._pointerDownEditorHandler = e => $pointerDownTarget = $(e.target);
                 that._saveEditorHandler = that.createAction(function(e) {
                     const event = e.event;
@@ -250,18 +263,18 @@ const EditingController = modules.ViewController.inherit((function() {
                     }
 
                     if(!isRowEditMode(that) && !that._editCellInProgress) {
-                        const isEditorPopup = checkEditorPopup($target) || checkEditorPopup($pointerDownTarget);
+                        const isEditorPopup = checkEditorPopup($target) || checkEditorPopup(targetComponent?.$element());
                         const isDomElement = !!$target.closest(getWindow().document).length;
-                        const isAnotherComponent = targetComponent && targetComponent !== that.component;
+                        const isAnotherComponent = targetComponent && !targetComponent._disposed && targetComponent !== that.component;
                         const isAddRowButton = !!$target.closest(`.${that.addWidgetPrefix(ADD_ROW_BUTTON_CLASS)}`).length;
                         const isFocusOverlay = $target.hasClass(that.addWidgetPrefix(FOCUS_OVERLAY_CLASS));
                         const isCellEditMode = getEditMode(that) === EDIT_MODE_CELL;
-                        if(!isEditorPopup && !isFocusOverlay && !(isAddRowButton && isCellEditMode && that.isEditing()) && (isDomElement || isAnotherComponent)) {
+                        if(!isResizing && !isEditorPopup && !isFocusOverlay && !(isAddRowButton && isCellEditMode && that.isEditing()) && (isDomElement || isAnotherComponent)) {
                             that._closeEditItem.bind(that)($target);
                         }
                     }
                 });
-
+                eventsEngine.on(domAdapter.getDocument(), pointerEvents.up, that._pointerUpEditorHandler);
                 eventsEngine.on(domAdapter.getDocument(), pointerEvents.down, that._pointerDownEditorHandler);
                 eventsEngine.on(domAdapter.getDocument(), clickEvent.name, that._saveEditorHandler);
             }
@@ -452,7 +465,6 @@ const EditingController = modules.ViewController.inherit((function() {
                 const $container = $(container);
 
                 if(options.rowType === 'data') {
-                    options.rtlEnabled = this.option('rtlEnabled');
                     const buttons = this._getEditingButtons(options);
 
                     this._renderEditingButtons($container, buttons, options);
@@ -550,6 +562,7 @@ const EditingController = modules.ViewController.inherit((function() {
         dispose: function() {
             this.callBase();
             clearTimeout(this._inputFocusTimeoutID);
+            eventsEngine.off(domAdapter.getDocument(), pointerEvents.up, this._pointerUpEditorHandler);
             eventsEngine.off(domAdapter.getDocument(), pointerEvents.down, this._pointerDownEditorHandler);
             eventsEngine.off(domAdapter.getDocument(), clickEvent.name, this._saveEditorHandler);
         },
@@ -679,11 +692,28 @@ const EditingController = modules.ViewController.inherit((function() {
 
             return item;
         },
+        _getLoadedRowIndexByInsertKey: function(items, change, key) {
+            const dataController = this._dataController;
+            const loadedRowIndexOffset = dataController.getRowIndexOffset(true);
+            let loadedRowIndex = key.dataRowIndex - loadedRowIndexOffset;
 
+            if(change.changeType === 'append') {
+                loadedRowIndex -= dataController.items(true).length;
+                if(change.removeCount) {
+                    loadedRowIndex += change.removeCount;
+                }
+            }
+
+            for(let i = 0; i < loadedRowIndex; i++) {
+                if(items[i] && items[i][INSERT_INDEX]) {
+                    loadedRowIndex++;
+                }
+            }
+
+            return loadedRowIndex;
+        },
         processItems: function(items, change) {
             const changeType = change.changeType;
-            const dataController = this._dataController;
-            let dataRowIndex = -1;
 
             this.update(changeType);
 
@@ -691,20 +721,12 @@ const EditingController = modules.ViewController.inherit((function() {
             for(let i = 0; i < editData.length; i++) {
                 const key = editData[i].key;
 
-                if(key) {
-                    const rowIndexOffset = dataController.getRowIndexOffset();
-                    dataRowIndex = key.dataRowIndex - rowIndexOffset + dataController.getRowIndexDelta();
-
-                    if(changeType === 'append') {
-                        dataRowIndex -= dataController.items(true).length;
-                        if(change.removeCount) {
-                            dataRowIndex += change.removeCount;
-                        }
-                    }
+                if(key && editData[i].type === DATA_EDIT_DATA_INSERT_TYPE) {
+                    const loadedRowIndex = this._getLoadedRowIndexByInsertKey(items, change, key);
 
                     const item = this._generateNewItem(key);
-                    if(dataRowIndex >= 0 && editData[i].type === DATA_EDIT_DATA_INSERT_TYPE && this._needInsertItem(editData[i], changeType, items, item)) {
-                        items.splice(key.dataRowIndex ? dataRowIndex : 0, 0, item);
+                    if(loadedRowIndex >= 0 && this._needInsertItem(editData[i], changeType, items, item)) {
+                        items.splice(key.dataRowIndex ? loadedRowIndex : 0, 0, item);
                     }
                 }
             }
@@ -719,13 +741,12 @@ const EditingController = modules.ViewController.inherit((function() {
             const key = item.data[INSERT_INDEX] ? item.data.key : item.key;
 
             const editIndex = getIndexByKey(key, that._editData);
+            item.isEditing = false;
 
             if(editIndex >= 0) {
                 const editMode = getEditMode(that);
                 const editData = that._editData[editIndex];
                 data = editData.data;
-
-                item.isEditing = false;
 
                 switch(editData.type) {
                     case DATA_EDIT_DATA_INSERT_TYPE:
@@ -791,7 +812,7 @@ const EditingController = modules.ViewController.inherit((function() {
             }
 
             insertKey.dataRowIndex = dataController.getRowIndexOffset() + rows.filter(function(row, index) {
-                return index < insertKey.rowIndex && (row.rowType === 'data' || row.rowType === 'group' || row.isNewRow);
+                return index < insertKey.rowIndex && (row.rowType === 'data' && !row.isNewRow || row.rowType === 'group');
             }).length;
 
             if(editMode !== EDIT_MODE_BATCH) {
@@ -1343,9 +1364,11 @@ const EditingController = modules.ViewController.inherit((function() {
                     changeType: 'update',
                     rowIndices: [oldEditRowIndex, rowIndex]
                 });
-            } else {
-                this.saveEditData();
+
+                return new Deferred().resolve();
             }
+
+            return this.saveEditData();
         },
         undeleteRow: function(rowIndex) {
             const that = this;
@@ -1516,8 +1539,8 @@ const EditingController = modules.ViewController.inherit((function() {
         },
         saveEditData: function() {
             const deferred = new Deferred();
-            const afterSaveEditData = () => {
-                when(this._afterSaveEditData()).done(function() {
+            const afterSaveEditData = (cancel) => {
+                when(this._afterSaveEditData(cancel)).done(function() {
                     deferred.resolve();
                 });
             };
@@ -1528,7 +1551,7 @@ const EditingController = modules.ViewController.inherit((function() {
                 }
                 when(this._beforeSaveEditData()).done(cancel => {
                     if(cancel) {
-                        afterSaveEditData();
+                        afterSaveEditData(cancel);
                         return;
                     }
                     this._saveEditDataInner().done(deferred.resolve).fail(deferred.reject);
@@ -1544,6 +1567,7 @@ const EditingController = modules.ViewController.inherit((function() {
             const dataSource = dataController.dataSource();
             const editMode = getEditMode(this);
             const result = new Deferred();
+            const editData = this._editData.slice(0);
 
             const resetEditIndices = () => {
                 if(editMode !== EDIT_MODE_CELL) {
@@ -1551,14 +1575,24 @@ const EditingController = modules.ViewController.inherit((function() {
                     this._editRowIndex = -1;
                 }
             };
-
+            const resetModifiedClassCells = () => {
+                if(editMode === EDIT_MODE_BATCH) {
+                    const columnsCount = this._columnsController.getVisibleColumns().length;
+                    editData.forEach(({ key }) => {
+                        const rowIndex = this._dataController.getRowIndexByKey(key);
+                        if(rowIndex !== -1) {
+                            for(let columnIndex = 0; columnIndex < columnsCount; columnIndex++) {
+                                this._rowsView._getCellElement(rowIndex, columnIndex).removeClass(CELL_MODIFIED);
+                            }
+                        }
+                    });
+                }
+            };
             const afterSaveEditData = (error) => {
                 when(this._afterSaveEditData()).done(function() {
                     result.resolve(error);
                 });
             };
-
-            const editData = this._editData.slice(0);
 
             if(!this._saveEditDataCore(deferreds, results, changes) && editMode === EDIT_MODE_CELL) {
                 this._focusEditingCell();
@@ -1571,6 +1605,7 @@ const EditingController = modules.ViewController.inherit((function() {
 
                 when.apply($, deferreds).done(() => {
                     if(this._processSaveEditDataResult(results)) {
+                        resetModifiedClassCells();
                         resetEditIndices();
 
                         if(editMode === EDIT_MODE_POPUP && this._editPopup) {
@@ -1727,6 +1762,7 @@ const EditingController = modules.ViewController.inherit((function() {
         hasEditData: function() {
             return this.hasChanges();
         },
+
         closeEditCell: function(isError, withoutSaveEditData) {
             const that = this;
             let result = deferredUtils.when();
@@ -1734,11 +1770,9 @@ const EditingController = modules.ViewController.inherit((function() {
 
             if(!isRowEditMode(that)) {
                 result = deferredUtils.Deferred();
-                setTimeout(() => {
-                    this.executeOperation(result, () => {
-                        this._closeEditCellCore(isError, oldEditRowIndex, withoutSaveEditData);
-                        result.resolve();
-                    });
+                this.executeOperation(result, () => {
+                    this._closeEditCellCore(isError, oldEditRowIndex, withoutSaveEditData);
+                    result.resolve();
                 });
             }
             return result.promise();
@@ -1868,6 +1902,18 @@ const EditingController = modules.ViewController.inherit((function() {
                 return true;
             }
         },
+        _needUpdateRow: function(column) {
+            const visibleColumns = this._columnsController.getVisibleColumns();
+
+            if(!column) {
+                column = visibleColumns[this._editColumnIndex];
+            }
+
+            const isCustomSetCellValue = column && column.setCellValue !== column.defaultSetCellValue;
+            const isCustomCalculateCellValue = visibleColumns.some((visibleColumn) => visibleColumn.calculateCellValue !== visibleColumn.defaultCalculateCellValue);
+
+            return isCustomSetCellValue || isCustomCalculateCellValue;
+        },
         _applyEditDataParams: function(options, params, forceUpdateRow) {
             const that = this;
             const editMode = getEditMode(that);
@@ -1875,22 +1921,14 @@ const EditingController = modules.ViewController.inherit((function() {
             const showEditorAlways = options.column.showEditorAlways;
             const isUpdateInCellMode = editMode === EDIT_MODE_CELL && options.row && !options.row.isNewRow;
             const focusPreviousEditingCell = showEditorAlways && !forceUpdateRow && isUpdateInCellMode && that.hasEditData() && !that.isEditCell(options.rowIndex, options.columnIndex);
-            const columns = that._columnsController.getVisibleColumns();
-            const isCustomCalculateCellValue = columns.some((column) => column.calculateCellValue !== column.defaultCalculateCellValue);
-            let focusCellAfterRowUpdate = false;
 
             if(focusPreviousEditingCell) {
                 that._focusEditingCell();
                 that._updateEditRow(options.row, true, isCustomSetCellValue);
                 return;
             }
-
             that._addEditData(params, options.row);
             that._updateEditButtons();
-
-            if(editMode === EDIT_MODE_CELL && (isCustomSetCellValue || isCustomCalculateCellValue)) {
-                forceUpdateRow = focusCellAfterRowUpdate = true;
-            }
 
             if(showEditorAlways && !forceUpdateRow) {
                 if(isUpdateInCellMode) {
@@ -1899,7 +1937,7 @@ const EditingController = modules.ViewController.inherit((function() {
                     that._editColumnIndex = options.columnIndex;
                     return that.saveEditData();
                 } else if(editMode === EDIT_MODE_BATCH) {
-                    forceUpdateRow = isCustomSetCellValue || isCustomCalculateCellValue;
+                    forceUpdateRow = that._needUpdateRow(options.column);
                 }
             }
 
@@ -1907,7 +1945,6 @@ const EditingController = modules.ViewController.inherit((function() {
             if(row) {
                 if(forceUpdateRow || isCustomSetCellValue) {
                     that._updateEditRow(row, forceUpdateRow, isCustomSetCellValue);
-                    focusCellAfterRowUpdate && that._focusEditingCell();
                 } else if(row.update) {
                     row.update();
                 }
@@ -2225,7 +2262,7 @@ const EditingController = modules.ViewController.inherit((function() {
                     e.event.preventDefault();
                     e.event.stopPropagation();
                 }));
-                options.rtlEnabled ? $container.prepend($button, '&nbsp;') : $container.append($button, '&nbsp;');
+                $container.append($button, '&nbsp;');
             }
         },
 
@@ -2678,13 +2715,13 @@ module.exports = {
                     const editingController = this._editingController;
                     const isCommandCell = !!parameters.column.command;
                     const isEditableCell = parameters.setValue;
-                    const isEditing = parameters.isEditing || editingController.isEditRow(parameters.rowIndex) && parameters.column.allowEditing;
+                    const isEditRow = editingController.isEditRow(parameters.rowIndex);
+                    const isEditing = isEditingCell(isEditRow, parameters);
 
-                    if(parameters.rowType === 'data' && !parameters.column.command && (isEditing || parameters.column.showEditorAlways)) {
+                    if(isEditingOrShowEditorAlwaysDataCell(isEditRow, parameters)) {
                         const alignment = parameters.column.alignment;
 
                         $cell
-                            .addClass(EDITOR_CELL_CLASS)
                             .toggleClass(this.addWidgetPrefix(READONLY_CLASS), !isEditableCell)
                             .toggleClass(CELL_FOCUS_DISABLED_CLASS, !isEditableCell);
 
@@ -2730,6 +2767,14 @@ module.exports = {
                     cellOptions.isEditing = this._editingController.isEditCell(cellOptions.rowIndex, cellOptions.columnIndex);
 
                     return cellOptions;
+                },
+                _createCell: function(options) {
+                    const $cell = this.callBase(options);
+                    const isEditRow = this._editingController.isEditRow(options.rowIndex);
+
+                    isEditingOrShowEditorAlwaysDataCell(isEditRow, options) && $cell.addClass(EDITOR_CELL_CLASS);
+
+                    return $cell;
                 },
                 _renderCellContent: function($cell, options) {
                     if(options.rowType === 'data' && getEditMode(this) === EDIT_MODE_POPUP && options.row.visible === false) {

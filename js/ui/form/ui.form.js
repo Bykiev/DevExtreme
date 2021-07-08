@@ -9,7 +9,7 @@ import { inArray } from '../../core/utils/array';
 import { extend } from '../../core/utils/extend';
 import { isEmpty } from '../../core/utils/string';
 import browser from '../../core/utils/browser';
-import { getPublicElement, triggerShownEvent } from '../../core/utils/dom';
+import { getPublicElement, triggerResizeEvent, triggerShownEvent } from '../../core/utils/dom';
 import messageLocalization from '../../localization/message';
 import Widget from '../widget/ui.widget';
 import Editor from '../editor/editor';
@@ -30,7 +30,8 @@ import {
     tryGetTabPath,
     getTextWithoutSpaces,
     isExpectedItem,
-    isFullPathContainsTabs
+    isFullPathContainsTabs,
+    getItemPath
 } from './ui.form.utils';
 
 import '../validation_summary';
@@ -41,6 +42,8 @@ const FIELD_ITEM_CLASS = 'dx-field-item';
 const FIELD_ITEM_LABEL_TEXT_CLASS = 'dx-field-item-label-text';
 const FORM_GROUP_CLASS = 'dx-form-group';
 const FORM_GROUP_CONTENT_CLASS = 'dx-form-group-content';
+const FIELD_ITEM_CONTENT_HAS_GROUP_CLASS = 'dx-field-item-has-group';
+const FIELD_ITEM_CONTENT_HAS_TABS_CLASS = 'dx-field-item-has-tabs';
 const FORM_GROUP_WITH_CAPTION_CLASS = 'dx-form-group-with-caption';
 const FORM_GROUP_CAPTION_CLASS = 'dx-form-group-caption';
 const HIDDEN_LABEL_CLASS = 'dx-layout-manager-hidden-label';
@@ -52,6 +55,9 @@ const GROUP_COL_COUNT_CLASS = 'dx-group-colcount-';
 const GROUP_COL_COUNT_ATTR = 'group-col-count';
 const FIELD_ITEM_CONTENT_CLASS = 'dx-field-item-content';
 const FORM_VALIDATION_SUMMARY = 'dx-form-validation-summary';
+const ROOT_SIMPLE_ITEM_CLASS = 'dx-root-simple-item';
+
+import { TOOLBAR_CLASS } from '../toolbar/constants';
 
 const WIDGET_CLASS = 'dx-widget';
 const FOCUSED_STATE_CLASS = 'dx-state-focused';
@@ -69,21 +75,13 @@ const Form = Widget.inherit({
         this._attachSyncSubscriptions();
     },
 
-    _initOptions: function(options) {
-        if(!('screenByWidth' in options)) {
-            options.screenByWidth = defaultScreenFactorFunc;
-        }
-
-        this.callBase(options);
-    },
-
     _getDefaultOptions: function() {
         return extend(this.callBase(), {
             formID: 'dx-' + new Guid(),
             formData: {},
             colCount: 1,
 
-            screenByWidth: null,
+            screenByWidth: defaultScreenFactorFunc,
 
             /**
             * @pseudo ColCountResponsibleType
@@ -104,6 +102,7 @@ const Form = Widget.inherit({
             minColWidth: 200,
             alignItemLabels: true,
             alignItemLabelsInAllGroups: true,
+            alignRootItemLabels: true,
             showColonAfterLabel: true,
             showRequiredMark: true,
             showOptionalMark: false,
@@ -345,8 +344,11 @@ const Form = Widget.inherit({
     },
 
     _applyLabelsWidthWithGroups: function($container, colCount, excludeTabbed) {
-        const alignItemLabelsInAllGroups = this.option('alignItemLabelsInAllGroups');
+        if(this.option('alignRootItemLabels') === true) {
+            this._alignRootSimpleItems($container, colCount, excludeTabbed);
+        }
 
+        const alignItemLabelsInAllGroups = this.option('alignItemLabelsInAllGroups');
         if(alignItemLabelsInAllGroups) {
             this._applyLabelsWidthWithNestedGroups($container, colCount, excludeTabbed);
         } else {
@@ -355,6 +357,13 @@ const Form = Widget.inherit({
             for(i = 0; i < $groups.length; i++) {
                 this._applyLabelsWidth($groups.eq(i), excludeTabbed);
             }
+        }
+    },
+
+    _alignRootSimpleItems: function($container, colCount, excludeTabbed) {
+        const $rootSimpleItems = $container.find(`.${ROOT_SIMPLE_ITEM_CLASS}`);
+        for(let colIndex = 0; colIndex < colCount; colIndex++) {
+            this._applyLabelsWidthByCol($rootSimpleItems, colIndex, excludeTabbed);
         }
     },
 
@@ -445,6 +454,8 @@ const Form = Widget.inherit({
             items: this.option('items'),
             inOneColumn
         });
+
+        triggerResizeEvent(this.$element().find(`.${TOOLBAR_CLASS}`));
     },
 
     _clean: function() {
@@ -571,6 +582,7 @@ const Form = Widget.inherit({
         //#ENDDEBUG
 
         that._rootLayoutManager = that._renderLayoutManager(items, $content, {
+            isRoot: true,
             colCount: that.option('colCount'),
             alignItemLabels: that.option('alignItemLabels'),
             screenByWidth: this.option('screenByWidth'),
@@ -635,6 +647,8 @@ const Form = Widget.inherit({
         };
         const tabPanel = this._createComponent($tabPanel, TabPanel, tabPanelOptions);
 
+        $($container).parent().addClass(FIELD_ITEM_CONTENT_HAS_TABS_CLASS);
+
         tabPanel.on('optionChanged', e => {
             if(e.fullName === 'dataSource') {
                 tryUpdateTabPanelInstance(e.value, e.component);
@@ -649,6 +663,9 @@ const Form = Widget.inherit({
             .toggleClass(FORM_GROUP_WITH_CAPTION_CLASS, isDefined(item.caption) && item.caption.length)
             .addClass(FORM_GROUP_CLASS)
             .appendTo($container);
+
+        $($container).parent().addClass(FIELD_ITEM_CONTENT_HAS_GROUP_CLASS);
+
         let colCount;
         let layoutManager;
 
@@ -718,6 +735,7 @@ const Form = Widget.inherit({
     _getLayoutManagerConfig: function(items, options) {
         const baseConfig = {
             form: this,
+            isRoot: options.isRoot,
             validationGroup: this._getValidationGroup(),
             showRequiredMark: this.option('showRequiredMark'),
             showOptionalMark: this.option('showOptionalMark'),
@@ -844,6 +862,7 @@ const Form = Widget.inherit({
                     this._invalidate();
                 }
                 break;
+            case 'alignRootItemLabels':
             case 'readOnly':
                 break;
             case 'width':
@@ -917,7 +936,7 @@ const Form = Widget.inherit({
             !layoutManager._updateLockCount && layoutManager.beginUpdate();
             const key = this._itemsRunTimeInfo.getKeyByPath(path);
             this.postponedOperations.add(key, () => {
-                layoutManager.endUpdate();
+                !layoutManager._disposed && layoutManager.endUpdate();
                 return new Deferred().resolve();
             });
         }
@@ -962,6 +981,11 @@ const Form = Widget.inherit({
 
             if(layoutManager) {
                 const fullOptionName = getFullOptionName(nameParts[endPartIndex], optionName);
+                if(optionName === 'editorType') { // T903774
+                    if(layoutManager.option(fullOptionName) !== value) {
+                        return false;
+                    }
+                }
                 if(optionName === 'visible') { // T874843
                     const formItems = this.option(getFullOptionName(itemPath, 'items'));
                     if(formItems && formItems.length) {
@@ -1330,10 +1354,10 @@ const Form = Widget.inherit({
         return deferred.promise();
     },
 
-    itemOption(id, option, value) {
+    itemOption: function(id, option, value) {
         const items = this._generateItemsFromData(this.option('items'));
         const item = this._getItemByField(id, items);
-        const path = this._itemsRunTimeInfo.getPathFromItem(item);
+        const path = getItemPath(items, item);
 
         if(!item) {
             return;
@@ -1369,6 +1393,7 @@ const Form = Widget.inherit({
             }
         }
     },
+
     validate: function() {
         return ValidationEngine.validateGroup(this._getValidationGroup());
     },

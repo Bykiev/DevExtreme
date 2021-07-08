@@ -1246,6 +1246,33 @@ QUnit.module('Grouping with basic remoteOperations', {
         }]);
     });
 
+    QUnit.test('grouping with mapping. Use an isContinuationOnNextPage flag', function(assert) {
+        const source = this.createDataSource({
+            pageSize: 2,
+            map: item => {
+                return item;
+            }
+        });
+
+        source.load();
+
+        assert.ok(source.items()[0].isContinuationOnNextPage);
+    });
+
+    QUnit.test('grouping with mapping. Use an isContinuation flag', function(assert) {
+        const source = this.createDataSource({
+            pageSize: 2,
+            pageIndex: 1,
+            map: item => {
+                return item;
+            }
+        });
+
+        source.load();
+
+        assert.ok(source.items()[0].isContinuation);
+    });
+
     QUnit.test('grouping with pageSize less items count. Not Continue on next page group parameter when all items on group on current page', function(assert) {
         const source = this.createDataSource({
             pageSize: 3
@@ -3442,6 +3469,44 @@ QUnit.module('Remote group paging', {
         assert.strictEqual(loadingChanged.getCall(3).args[0].requireGroupCount, true, 'require group count should not be passed on second loading');
         assert.strictEqual(loadingChanged.getCall(3).args[0].skip, 0, 'skip for second level');
         assert.strictEqual(loadingChanged.getCall(3).args[0].take, 2, 'take for second level');
+    });
+
+    // T990766
+    QUnit.test('Reload dataSource when two expanded group and two group levels exist', function(assert) {
+        const dataSource = this.createDataSource({
+            group: ['field1', 'field2'],
+            pageSize: 3
+        });
+        const loadingChanged = sinon.stub();
+
+        dataSource.load();
+
+        dataSource.changeRowExpand([2]);
+        dataSource.load();
+        dataSource.changeRowExpand([2, 4]);
+        dataSource.load();
+
+        dataSource.store().on('loading', loadingChanged);
+
+        // act
+        dataSource.reload(true);
+
+        assert.deepEqual(dataSource.items(), [
+            {
+                key: 1,
+                items: null
+            },
+            {
+                key: 2,
+                items: [{
+                    isContinuationOnNextPage: true,
+                    key: 4,
+                    items: []
+                }]
+            }], 'items');
+
+        assert.equal(dataSource.totalItemsCount(), 9, 'total items count');
+        assert.strictEqual(loadingChanged.callCount, 6, 'loading count');
     });
 
     QUnit.test('Error on change grouping when one expanded group and two group levels exist', function(assert) {

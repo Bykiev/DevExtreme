@@ -4,8 +4,12 @@ import { extend } from '../core/utils/extend';
 import Draggable from './draggable';
 import { getPublicElement } from '../core/utils/dom';
 import { getWindow } from '../core/utils/window';
+import { getBoundingRect } from '../core/utils/position';
 import translator from '../animation/translator';
 import fx from '../animation/fx';
+import { Deferred } from '../core/utils/deferred';
+
+// STYLE sortable
 
 const SORTABLE = 'dxSortable';
 
@@ -14,6 +18,42 @@ const CLONE_CLASS = 'clone';
 
 
 const isElementVisible = itemElement => $(itemElement).is(':visible');
+
+const animate = (element, config) => {
+    if(!element) return;
+
+    const left = config.to?.left || 0;
+    const top = config.to?.top || 0;
+
+    element.style.transform = `translate(${left}px,${top}px)`;
+    element.style.transition = fx.off ? '' : `all ${config.duration}ms ${config.easing}`;
+};
+
+const stopAnimation = (element) => {
+    if(!element) return;
+
+    element.style.transform = '';
+    element.style.transition = '';
+};
+
+function getScrollableBoundary($scrollable) {
+    const offset = $scrollable.offset();
+    const style = $scrollable[0].style;
+    const paddingLeft = parseFloat(style.paddingLeft) || 0;
+    const paddingRight = parseFloat(style.paddingRight) || 0;
+    const paddingTop = parseFloat(style.paddingTop) || 0;
+    // use clientWidth, because vertical scrollbar reduces content width
+    const width = $scrollable[0].clientWidth - (paddingLeft + paddingRight);
+    const height = $scrollable.height();
+    const left = offset.left + paddingLeft;
+    const top = offset.top + paddingTop;
+    return {
+        left,
+        right: left + width,
+        top,
+        bottom: top + height
+    };
+}
 
 const Sortable = Draggable.inherit({
     _getDefaultOptions: function() {
@@ -49,7 +89,8 @@ const Sortable = Draggable.inherit({
             onPlaceholderPrepared: null,
             animation: {
                 type: 'slide',
-                duration: 300
+                duration: 300,
+                easing: 'ease'
             },
             fromIndex: null,
             toIndex: null,
@@ -143,17 +184,13 @@ const Sortable = Draggable.inherit({
     },
 
     dragEnter: function() {
-        if(this === this._getTargetDraggable()) {
-            this.option('toIndex', this.option('fromIndex'));
-        } else {
+        if(this !== this._getTargetDraggable()) {
             this.option('toIndex', -1);
         }
     },
 
     dragLeave: function() {
-        if(this === this._getTargetDraggable()) {
-            this.option('toIndex', -1);
-        } else {
+        if(this !== this._getTargetDraggable()) {
             this.option('toIndex', this.option('fromIndex'));
         }
     },
@@ -163,10 +200,9 @@ const Sortable = Draggable.inherit({
         const $scrollable = this._getScrollable($targetDraggable);
 
         if($scrollable) {
-            const offset = $scrollable.offset();
-            const validY = offset.top + $scrollable.height() >= event.pageY && offset.top <= event.pageY;
-            const validX = offset.left + $scrollable.width() >= event.pageX && offset.left <= event.pageX;
-
+            const { left, right, top, bottom } = getScrollableBoundary($scrollable);
+            const validX = left <= event.pageX && event.pageX <= right;
+            const validY = top <= event.pageY && event.pageY <= bottom;
             return validY && validX;
         }
 
@@ -200,9 +236,11 @@ const Sortable = Draggable.inherit({
             }
 
             if(sourceDraggable === this) {
-                this._fireReorderEvent(sourceEvent);
+                return this._fireReorderEvent(sourceEvent);
             }
         }
+
+        return (new Deferred()).resolve();
     },
 
     dragMove: function(e) {
@@ -418,30 +456,12 @@ const Sortable = Draggable.inherit({
         this._updateItemPoints();
     },
 
-    _getScrollable: function($element) {
-        const that = this;
-        let $scrollable;
-
-        $element.parents().toArray().some(function(parent) {
-            const $parent = $(parent);
-
-            if(that._horizontalScrollHelper.isScrollable($parent) || that._verticalScrollHelper.isScrollable($parent)) {
-                $scrollable = $parent;
-
-                return true;
-            }
-        });
-
-        return $scrollable;
-    },
-
     _makeWidthCorrection: function($item, width) {
-        const that = this;
-        that._$scrollable = that._getScrollable($item);
+        this._$scrollable = this._getScrollable($item);
 
-        if(that._$scrollable && that._$scrollable.width() < width) {
-            const scrollableWidth = that._$scrollable.width();
-            const offsetLeft = $item.offset().left - that._$scrollable.offset().left;
+        if(this._$scrollable && this._$scrollable.width() < width) {
+            const scrollableWidth = this._$scrollable.width();
+            const offsetLeft = $item.offset().left - this._$scrollable.offset().left;
             const offsetRight = scrollableWidth - $item.outerWidth() - offsetLeft;
 
             if(offsetLeft > 0) {
@@ -459,7 +479,7 @@ const Sortable = Draggable.inherit({
     _updatePlaceholderSizes: function($placeholderElement, itemElement) {
         const that = this;
         const dropInsideItem = that.option('dropInsideItem');
-        const $item = itemElement ? $(itemElement) : that._getSourceElement();
+        const $item = $(itemElement);
         const isVertical = that._isVerticalOrientation();
         let width = '';
         let height = '';
@@ -540,9 +560,19 @@ const Sortable = Draggable.inherit({
             case 'moveItemOnDrop':
             case 'dropFeedbackMode':
             case 'itemPoints':
-            case 'fromIndex':
             case 'animation':
             case 'allowReordering':
+                break;
+            case 'fromIndex':
+                if(!this._$sourceElement) {
+                    [false, true].forEach((isDragSource) => {
+                        const fromIndex = isDragSource ? args.value : args.previousValue;
+                        if(fromIndex !== null) {
+                            const $fromElement = $(this._getItems()[fromIndex]);
+                            this._toggleDragSourceClass(isDragSource, $fromElement);
+                        }
+                    });
+                }
                 break;
             case 'dropInsideItem':
                 this._optionChangedDropInsideItem(args);
@@ -577,7 +607,7 @@ const Sortable = Draggable.inherit({
         }
 
         if(scrollContainer) {
-            const clientRect = scrollContainer.getBoundingClientRect();
+            const clientRect = getBoundingRect(scrollContainer);
             const isVerticalOrientation = this._isVerticalOrientation();
             const start = isVerticalOrientation ? 'top' : 'left';
             const end = isVerticalOrientation ? 'bottom' : 'right';
@@ -624,14 +654,12 @@ const Sortable = Draggable.inherit({
         const $placeholderElement = that._$placeholderElement || that._createPlaceholder();
         const items = that._getItems();
         const toIndex = that.option('toIndex');
-        const itemElement = items[toIndex];
         const isVerticalOrientation = that._isVerticalOrientation();
         const rtlEnabled = this.option('rtlEnabled');
         const dropInsideItem = that.option('dropInsideItem');
         let position = null;
         let leftMargin = 0;
-
-        that._updatePlaceholderSizes($placeholderElement, itemElement);
+        let itemElement = items[toIndex];
 
         if(itemElement) {
             const $itemElement = $(itemElement);
@@ -643,7 +671,7 @@ const Sortable = Draggable.inherit({
                 position.left += $itemElement.outerWidth(true);
             }
         } else {
-            const prevVisibleItemElement = this._getPrevVisibleItem(items, toIndex);
+            const prevVisibleItemElement = itemElement = this._getPrevVisibleItem(items, toIndex);
 
             if(prevVisibleItemElement) {
                 position = $(prevVisibleItemElement).offset();
@@ -655,6 +683,8 @@ const Sortable = Draggable.inherit({
                 }
             }
         }
+
+        that._updatePlaceholderSizes($placeholderElement, itemElement);
 
         if(position && !that._isPositionVisible(position)) {
             position = null;
@@ -716,16 +746,14 @@ const Sortable = Draggable.inherit({
         const rtlEnabled = this.option('rtlEnabled');
 
         for(let i = 0; i < items.length; i++) {
-            const $item = $(items[i]);
+            const itemElement = items[i];
             const prevPosition = prevPositions[i];
             const position = positions[i];
 
             if(toIndex === null || fromIndex === null) {
-                fx.stop($item);
-                translator.resetPosition($item);
+                stopAnimation(itemElement);
             } else if(prevPosition !== position) {
-                fx.stop($item);
-                fx.animate($item, extend({}, animationConfig, {
+                animate(itemElement, extend({}, animationConfig, {
                     to: { [positionPropName]: !isVerticalOrientation && rtlEnabled ? -position : position }
                 }));
             }
@@ -767,6 +795,8 @@ const Sortable = Draggable.inherit({
         const args = this._getEventArgs(sourceEvent);
 
         this._getAction('onReorder')(args);
+
+        return args.promise || (new Deferred()).resolve();
     }
 });
 

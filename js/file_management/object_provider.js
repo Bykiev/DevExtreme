@@ -95,8 +95,6 @@ class ObjectFileSystemProvider extends FileSystemProviderBase {
             array.push(dataItem);
         }));
 
-        this._updateHasSubDirs(destinationDir);
-
         return deferreds;
     }
 
@@ -111,8 +109,6 @@ class ObjectFileSystemProvider extends FileSystemProviderBase {
             const copiedItem = this._createCopy(dataItem);
             array.push(copiedItem);
         }));
-
-        this._updateHasSubDirs(destinationDir);
 
         return deferreds;
     }
@@ -232,10 +228,6 @@ class ObjectFileSystemProvider extends FileSystemProviderBase {
         const array = this._getDirectoryDataItems(parentDataItem);
         array.push(dataObj);
 
-        if(isDirectory) {
-            this._updateHasSubDirs(parentDir);
-        }
-
         return dataObj;
     }
 
@@ -278,6 +270,7 @@ class ObjectFileSystemProvider extends FileSystemProviderBase {
     }
 
     _getItems(parentDir) {
+        this._validateDirectoryExists(parentDir);
         const pathInfo = parentDir.getFullPathInfo();
         const parentDirKey = pathInfo && pathInfo.length > 0 ? pathInfo[pathInfo.length - 1].key : null;
         let dirFileObjects = this._data;
@@ -358,13 +351,6 @@ class ObjectFileSystemProvider extends FileSystemProviderBase {
             this._keySetter(dataObj, key);
         }
         return key;
-    }
-
-    _updateHasSubDirs(dir) {
-        if(dir && !dir.isRoot()) {
-            const dataItem = this._findDataObject(dir);
-            dir.hasSubDirectories = this._hasSubDirs(dataItem);
-        }
     }
 
     _hasSubDirs(dataObj) {

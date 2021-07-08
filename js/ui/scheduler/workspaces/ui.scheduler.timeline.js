@@ -1,6 +1,7 @@
 const $ = require('../../../core/renderer');
 const noop = require('../../../core/utils/common').noop;
 const extend = require('../../../core/utils/extend').extend;
+const getBoundingRect = require('../../../core/utils/position').getBoundingRect;
 const registerComponent = require('../../../core/component_registrator');
 const SchedulerWorkSpace = require('./ui.scheduler.work_space.indicator');
 const dateUtils = require('../../../core/utils/date');
@@ -50,40 +51,7 @@ const SchedulerTimeline = SchedulerWorkSpace.inherit({
         });
     },
 
-    _getRightCell: function() {
-        let $rightCell;
-        const $focusedCell = this._$focusedCell;
-        const rowCellCount = this._getCellCount();
-        const edgeCellIndex = this._isRTL() ? 0 : rowCellCount - 1;
-        const direction = this._isRTL() ? 'prev' : 'next';
-
-        if($focusedCell.index() === edgeCellIndex) {
-            $rightCell = $focusedCell;
-        } else {
-            $rightCell = $focusedCell[direction]();
-            $rightCell = this._checkForViewBounds($rightCell);
-        }
-        return $rightCell;
-    },
-
-    _getLeftCell: function() {
-        let $leftCell;
-        const $focusedCell = this._$focusedCell;
-        const rowCellCount = this._getCellCount();
-        const edgeCellIndex = this._isRTL() ? rowCellCount - 1 : 0;
-        const direction = this._isRTL() ? 'next' : 'prev';
-
-        if($focusedCell.index() === edgeCellIndex) {
-            $leftCell = $focusedCell;
-        } else {
-            $leftCell = $focusedCell[direction]();
-            $leftCell = this._checkForViewBounds($leftCell);
-        }
-
-        return $leftCell;
-    },
-
-    _getRowCount: function() {
+    _getRowCount() {
         return 1;
     },
 
@@ -136,10 +104,10 @@ const SchedulerTimeline = SchedulerWorkSpace.inherit({
 
     _getWorkSpaceHeight: function() {
         if(this.option('crossScrollingEnabled')) {
-            return this._$dateTable.get(0).getBoundingClientRect().height;
+            return getBoundingRect(this._$dateTable.get(0)).height;
         }
 
-        return this.$element().get(0).getBoundingClientRect().height;
+        return getBoundingRect(this.$element().get(0)).height;
     },
 
     _dateTableScrollableConfig: function() {
@@ -251,7 +219,7 @@ const SchedulerTimeline = SchedulerWorkSpace.inherit({
         this._renderTimePanel();
         this._renderDateTable();
 
-        this._shader = new HorizontalShader();
+        this._shader = new HorizontalShader(this);
 
         this._updateGroupTableHeight();
 
@@ -261,18 +229,43 @@ const SchedulerTimeline = SchedulerWorkSpace.inherit({
 
     _setHorizontalGroupHeaderCellsHeight: noop,
 
-    getIndicationWidth: function() {
+    getIndicationCellCount: function() {
+        const timeDiff = this._getTimeDiff();
+        return this._calculateDurationInCells(timeDiff);
+    },
+
+    _getTimeDiff: function() {
         const today = this._getToday();
-        const cellWidth = this.getCellWidth();
         const date = this._getIndicationFirstViewDate();
-        const hiddenInterval = this._getHiddenInterval();
-        const timeDiff = today.getTime() - date.getTime();
+        return today.getTime() - date.getTime();
+    },
 
-        const differenceInDays = Math.ceil(timeDiff / toMs('day')) - 1;
-        const duration = timeDiff - differenceInDays * hiddenInterval;
-        const cellCount = duration / this.getCellDuration();
+    _calculateDurationInCells: function(timeDiff) {
+        const today = this._getToday();
+        const differenceInDays = Math.floor(timeDiff / toMs('day'));
 
-        return cellCount * cellWidth;
+        let duration = (timeDiff - differenceInDays * toMs('day') - this.option('startDayHour') * toMs('hour')) / this.getCellDuration();
+
+        if(today.getHours() > this.option('endDayHour')) {
+            duration = this._getCellCountInDay();
+        }
+        if(duration < 0) {
+            duration = 0;
+        }
+        return differenceInDays * this._getCellCountInDay() + duration;
+    },
+
+    getIndicationWidth: function() {
+        if(this.isGroupedByDate()) {
+            const cellCount = this.getIndicationCellCount();
+            const integerPart = Math.floor(cellCount);
+            const fractionPart = cellCount - integerPart;
+
+            return this.getCellWidth() * (integerPart * this._getGroupCount() + fractionPart);
+        } else {
+            return this.getIndicationCellCount() * this.getCellWidth();
+        }
+
     },
 
     _renderIndicator: function(height, rtlOffset, $container, groupCount) {
@@ -281,13 +274,13 @@ const SchedulerTimeline = SchedulerWorkSpace.inherit({
 
         if(this.option('groupOrientation') === 'vertical') {
             $indicator = this._createIndicator($container);
-            $indicator.height($container.get(0).getBoundingClientRect().height);
+            $indicator.height(getBoundingRect($container.get(0)).height);
             $indicator.css('left', rtlOffset ? rtlOffset - width : width);
         } else {
             for(let i = 0; i < groupCount; i++) {
-                const offset = this._getCellCount() * this.getCellWidth() * i;
+                const offset = this.isGroupedByDate() ? i * this.getCellWidth() : this._getCellCount() * this.getCellWidth() * i;
                 $indicator = this._createIndicator($container);
-                $indicator.height($container.get(0).getBoundingClientRect().height);
+                $indicator.height(getBoundingRect($container.get(0)).height);
 
                 $indicator.css('left', rtlOffset ? rtlOffset - width - offset : width + offset);
             }
@@ -301,7 +294,7 @@ const SchedulerTimeline = SchedulerWorkSpace.inherit({
     _isCurrentTimeHeaderCell: function(headerIndex) {
         let result = false;
 
-        if(this.option('showCurrentTimeIndicator') && this._needRenderDateTimeIndicator()) {
+        if(this.isIndicationOnView()) {
             let date = this._getDateByIndex(headerIndex);
 
             const now = this._getToday();
@@ -385,7 +378,7 @@ const SchedulerTimeline = SchedulerWorkSpace.inherit({
         const dateTable = this._getDateTable();
         const dateTableRowSelector = '.' + this._getDateTableRowClass();
 
-        return (dateTable.get(0).getBoundingClientRect().height / dateTable.find(dateTableRowSelector).length) - DATE_TABLE_CELL_BORDER * 2;
+        return (getBoundingRect(dateTable).height / dateTable.find(dateTableRowSelector).length) - DATE_TABLE_CELL_BORDER * 2;
     },
 
     _getCellCoordinatesByIndex: function(index) {
@@ -409,12 +402,8 @@ const SchedulerTimeline = SchedulerWorkSpace.inherit({
         return this._$dateTable.outerWidth(true);
     },
 
-    _getGroupIndexByCell: function($cell) {
-        return $cell.parent().index();
-    },
-
-    _getIndicationFirstViewDate: function() {
-        return new Date(this._firstViewDate);
+    _getIndicationFirstViewDate() {
+        return dateUtils.trimTime(new Date(this._firstViewDate));
     },
 
     _getIntervalBetween: function(currentDate, allDay) {
@@ -562,7 +551,7 @@ const SchedulerTimeline = SchedulerWorkSpace.inherit({
     scrollToTime: function(hours, minutes, date) {
         const coordinates = this._getScrollCoordinates(hours, minutes, date);
         const scrollable = this.getScrollable();
-        const offset = this.option('rtlEnabled') ? this.getScrollableContainer().get(0).getBoundingClientRect().width : 0;
+        const offset = this.option('rtlEnabled') ? getBoundingRect(this.getScrollableContainer().get(0)).width : 0;
 
         if(this.option('templatesRenderAsynchronously')) {
             setTimeout(function() {
@@ -571,6 +560,10 @@ const SchedulerTimeline = SchedulerWorkSpace.inherit({
         } else {
             scrollable.scrollBy({ left: coordinates.left - scrollable.scrollLeft() - offset, top: 0 });
         }
+    },
+
+    _getRowCountWithAllDayRows: function() {
+        return this._getRowCount();
     }
 });
 

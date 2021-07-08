@@ -2,8 +2,6 @@ import $ from '../../core/renderer';
 import fx from '../../animation/fx';
 import { Deferred, when } from '../../core/utils/deferred';
 import { camelize } from '../../core/utils/inflector';
-import { isDefined } from '../../core/utils/type';
-import * as zIndexPool from '../overlay/z_index';
 
 const animation = {
     moveTo(config) {
@@ -113,68 +111,25 @@ class DrawerStrategy {
         }
     }
 
-    renderPosition(isDrawerOpened, animate) {
-        this._prepareAnimationDeferreds(animate);
+    renderPosition(changePositionUsingFxAnimation, animationDuration) {
+        const whenPositionAnimationCompleted = new Deferred();
+        const whenShaderAnimationCompleted = new Deferred();
 
-        const config = this._getPositionRenderingConfig(isDrawerOpened);
-
-        if(this._useDefaultAnimation()) {
-            this._defaultPositionRendering(config, isDrawerOpened, animate);
-        } else {
-            const revealMode = this.getDrawerInstance().option('revealMode');
-            if(revealMode === 'slide') {
-                this._slidePositionRendering(config, isDrawerOpened, animate);
-            } else if(revealMode === 'expand') {
-                this._expandPositionRendering(config, isDrawerOpened, animate);
-            }
-        }
-    }
-
-    _prepareAnimationDeferreds(animate) {
         const drawer = this.getDrawerInstance();
 
-        this._contentAnimation = new Deferred();
-        this._panelAnimation = new Deferred();
-        this._shaderAnimation = new Deferred();
-
-        drawer._animations.push(this._contentAnimation, this._panelAnimation, this._shaderAnimation);
-
-        if(animate) {
-            when.apply($, drawer._animations).done(() => {
+        if(changePositionUsingFxAnimation) {
+            when.apply($, [whenPositionAnimationCompleted, whenShaderAnimationCompleted]).done(() => {
                 drawer._animationCompleteHandler();
             });
-        } else {
+        }
+
+        this._internalRenderPosition(changePositionUsingFxAnimation, whenPositionAnimationCompleted);
+
+        if(!changePositionUsingFxAnimation) {
             drawer.resizeViewContent();
         }
-    }
 
-    _getPositionRenderingConfig(isDrawerOpened) {
-        const drawer = this.getDrawerInstance();
-
-        return {
-            direction: drawer.calcTargetPosition(),
-            $panel: $(drawer.content()),
-            $content: $(drawer.viewContent()),
-            defaultAnimationConfig: this._defaultAnimationConfig(),
-            size: this._getPanelSize(isDrawerOpened)
-        };
-    }
-
-    _useDefaultAnimation() {
-        return false;
-    }
-
-    _elementsAnimationCompleteHandler() {
-        this._contentAnimation.resolve();
-        this._panelAnimation.resolve();
-    }
-
-    _defaultAnimationConfig() {
-        return {
-            complete: () => {
-                this._elementsAnimationCompleteHandler();
-            }
-        };
+        this.renderShaderVisibility(changePositionUsingFxAnimation, animationDuration, whenShaderAnimationCompleted);
     }
 
     _getPanelOffset(isDrawerOpened) {
@@ -192,34 +147,19 @@ class DrawerStrategy {
         return isDrawerOpened ? this.getDrawerInstance().getMaxSize() : this.getDrawerInstance().getMinSize();
     }
 
-    renderShaderVisibility(isShaderVisible, animate, duration) {
+    renderShaderVisibility(changePositionUsingFxAnimation, duration, whenAnimationCompleted) {
         const drawer = this.getDrawerInstance();
+        const isShaderVisible = drawer.option('opened');
         const fadeConfig = isShaderVisible ? { from: 0, to: 1 } : { from: 1, to: 0 };
 
-        if(animate) {
+        if(changePositionUsingFxAnimation) {
             animation.fade($(drawer._$shader), fadeConfig, duration, () => {
                 this._drawer._toggleShaderVisibility(isShaderVisible);
-                this._shaderAnimation.resolve();
+                whenAnimationCompleted.resolve();
             });
         } else {
             drawer._toggleShaderVisibility(isShaderVisible);
             drawer._$shader.css('opacity', fadeConfig.to);
-        }
-    }
-
-    updateZIndex() {
-        if(this._drawer.option('shading')) {
-            if(!isDefined(this._shaderZIndex)) {
-                this._shaderZIndex = zIndexPool.base() + 500;
-                this._drawer._$shader.css('zIndex', this._shaderZIndex);
-            }
-        }
-    }
-
-    clearZIndex() {
-        if(isDefined(this._shaderZIndex)) {
-            this._drawer._$shader.css('zIndex', '');
-            delete this._shaderZIndex;
         }
     }
 
@@ -244,6 +184,9 @@ class DrawerStrategy {
 
     isViewContentFirst() {
         return false;
+    }
+
+    onPanelContentRendered() {
     }
 }
 

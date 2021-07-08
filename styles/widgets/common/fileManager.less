@@ -107,7 +107,7 @@
         align-items: center;
 
         &.dx-filemanager-progress-box-without-close-button {
-            padding-right: 41px;
+            padding-right: 10px;
         }
 
         .dx-filemanager-progress-box-image {
@@ -200,6 +200,10 @@
             &.dx-drawer-panel-content-initial {
                 min-width: 250px;
                 max-width: 300px;
+            }
+
+            &.dx-drawer-panel-content-adaptive {
+                max-width: 100%;
             }
         }
     }
@@ -412,6 +416,10 @@
         display: flex;
         align-items: flex-end;
 
+        & > .dx-icon {
+            flex: 0 0 auto;
+        }
+
         .dx-filemanager-dirs-tree-item-text {
             flex: 1 auto;
             white-space: nowrap;
@@ -452,7 +460,10 @@
 .dx-filemanager-dialog-delete-item-popup > .dx-overlay-content {
     max-width: 340px;
     min-height: 180px;
-    max-height: 180px;
+
+    .dx-popup-content .dx-filemanager-dialog-delete-item {
+        overflow-wrap: break-word;
+    }
 }
 
 .dx-filemanager-progresspanel {

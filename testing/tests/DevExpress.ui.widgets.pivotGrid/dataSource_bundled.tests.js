@@ -13,6 +13,8 @@ import executeAsyncMock from '../../helpers/executeAsyncMock.js';
 
 import '../../../testing/content/orders.js';
 
+import PivotGridTestSettings from '../../helpers/pivotGridTestSettings.js';
+
 function createDataSource(options) {
     const dataSource = new DataSource(options);
     dataSource.load();
@@ -4094,7 +4096,7 @@ QUnit.module('dxPivotGrid dataSource with Store', {
                 },
                 store: {
                     type: 'xmla',
-                    url: 'http://teamdashboard.corp.devexpress.com/MSOLAP2008/msmdpump.dll',
+                    url: PivotGridTestSettings.XMLA_STORE_URL,
                     catalog: 'Adventure Works DW Standard Edition',
                     cube: 'Adventure Works'
                 }
@@ -4136,7 +4138,7 @@ QUnit.module('dxPivotGrid dataSource with Store', {
                 },
                 store: {
                     type: 'xmla',
-                    url: 'http://teamdashboard.corp.devexpress.com/MSOLAP2008/msmdpump.dll',
+                    url: PivotGridTestSettings.XMLA_STORE_URL,
                     catalog: 'Adventure Works DW Standard Edition',
                     cube: 'Adventure Works'
                 }
@@ -6501,6 +6503,77 @@ QUnit.module('State storing', defaultEnvironment, () => {
             }
         ]);
 
+    });
+
+    QUnit.test('groupIndex should be assinged to group field with groupInterval (T892304)', function(assert) {
+        this.testStore.load.returns($.Deferred());
+        const dataSource = createDataSource({
+            fields: [
+                { groupName: 'date', dataField: 'date', area: 'column', dataType: 'date' },
+                { groupName: 'date', groupInterval: 'year', groupIndex: 0 },
+                { groupName: 'date', groupInterval: 'month', groupIndex: 1 },
+                { groupName: 'date', groupInterval: 'day' }
+            ],
+            store: this.testStore
+        });
+
+        // act
+        const state = dataSource.state();
+        dataSource.state(state);
+
+        // Assert
+        assert.equal(this.testStore.load.callCount, 2);
+        assert.equal(dataSource.fields().length, 4, 'field count');
+        assert.deepEqual(dataSource.fields()[0].levels.map(l => l.groupInterval), ['year', 'month', 'day'], 'group levels');
+        assert.equal(dataSource.fields()[3].groupInterval, 'day', 'last field groupInterval');
+        assert.equal(dataSource.fields()[3].groupIndex, 2, 'last field groupIndex');
+    });
+
+    QUnit.test('groupIndex should be assinged to all group field with groupInterval (T892304)', function(assert) {
+        this.testStore.load.returns($.Deferred());
+        const dataSource = createDataSource({
+            fields: [
+                { groupName: 'date', dataField: 'date', area: 'column', dataType: 'date' },
+                { groupName: 'date', groupInterval: 'year' },
+                { groupName: 'date', groupInterval: 'month' },
+                { groupName: 'date', groupInterval: 'day' }
+            ],
+            store: this.testStore
+        });
+
+        // act
+        const state = dataSource.state();
+        dataSource.state(state);
+
+        // Assert
+        assert.equal(this.testStore.load.callCount, 2);
+        assert.equal(dataSource.fields().length, 4, 'field count');
+        assert.deepEqual(dataSource.fields()[0].levels.map(l => l.groupInterval), ['year', 'month', 'day'], 'group levels');
+        assert.deepEqual(dataSource.fields().map(l => l.groupIndex), [undefined, 0, 1, 2], 'assigned groupIndexes');
+    });
+
+    QUnit.test('Set state if field with groupInterval and without groupIndex exists (T892304)', function(assert) {
+        this.testStore.load.returns($.Deferred());
+        const dataSource = createDataSource({
+            fields: [
+                { groupName: 'date', dataField: 'date', area: 'column', dataType: 'date' },
+                { groupName: 'date', groupInterval: 'year', groupIndex: 0 },
+                { groupName: 'date', groupInterval: 'month', groupIndex: 1 },
+                { groupName: 'date', groupInterval: 'day', visible: false }
+            ],
+            store: this.testStore
+        });
+
+        // act
+        const state = dataSource.state();
+        dataSource.state(state);
+
+        // Assert
+        assert.equal(this.testStore.load.callCount, 2);
+        assert.equal(dataSource.fields().length, 4, 'field count');
+        assert.deepEqual(dataSource.fields()[0].levels.map(l => l.groupInterval), ['year', 'month'], 'group levels');
+        assert.equal(dataSource.fields()[3].groupInterval, 'day', 'last field groupInterval');
+        assert.equal(dataSource.fields()[3].groupIndex, 2, 'last field groupIndex');
     });
 
     QUnit.test('Set State state fields count less fields count', function(assert) {

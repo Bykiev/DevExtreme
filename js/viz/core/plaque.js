@@ -208,7 +208,7 @@ export class Plaque {
         this.moveContentGroup = moveContentGroup;
     }
 
-    draw({ x: anchorX, y: anchorY, canvas = {}, offsetX, offsetY, offset = 0 }) {
+    draw({ x: anchorX, y: anchorY, canvas = {}, offsetX, offsetY, offset = 0, ...restProps }) {
         const options = this.options;
         let { x, y } = options;
 
@@ -221,13 +221,12 @@ export class Plaque {
             height: canvas.height - canvas.bottom - canvas.top
         };
 
-
         if(!(isDefined(anchorX) && isDefined(anchorY)) && !(isDefined(x) && isDefined(y))) {
-            return;
+            return false;
         }
 
         if(isDefined(anchorX) && (anchorX < bounds.xl || bounds.xr < anchorX || anchorY < bounds.yt || bounds.yb < anchorY)) {
-            return;
+            return false;
         }
 
         if(!this._root) {
@@ -308,19 +307,23 @@ export class Plaque {
             this.anchorX = anchorX;
             this.anchorY = anchorY;
             this.move(x, y);
+            this._root?.append(this.root);
         };
 
         if(this.contentTemplate.render) {
             this.contentTemplate.render({ model: options, container: this._contentGroup.element, onRendered: onRender });
         } else {
-            this.contentTemplate(this.widget, this._contentGroup);
-            onRender();
+            return this.contentTemplate({ group: this._contentGroup, onRender, ...restProps });
         }
+        return true;
     }
 
     _draw() {
         const renderer = this.widget._renderer;
         const options = this.options;
+
+        const shadowSettings = extend({ x: '-50%', y: '-50%', width: '200%', height: '200%' }, options.shadow);
+        const shadow = this._shadow = renderer.shadowFilter().attr(shadowSettings);
 
         const cloudSettings = { opacity: options.opacity, 'stroke-width': 0, fill: options.color };
         const borderOptions = options.border || {};
@@ -333,9 +336,6 @@ export class Plaque {
                 dashStyle: borderOptions.dashStyle
             });
         }
-
-        const shadowSettings = extend({ x: '-50%', y: '-50%', width: '200%', height: '200%' }, options.shadow);
-        const shadow = this._shadow = renderer.shadowFilter().attr(shadowSettings);
 
         const group = this._root = renderer.g().append(this.root);
         if(options.type) {

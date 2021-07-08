@@ -217,6 +217,14 @@ class FileUploader extends Editor {
         ]);
     }
 
+    _initOptions(options) {
+        const isLabelTextDefined = 'labelText' in options;
+        super._initOptions(options);
+        if(!isLabelTextDefined && !this._shouldDragOverBeRendered()) {
+            this.option('labelText', '');
+        }
+    }
+
     _init() {
         super._init();
 
@@ -274,7 +282,7 @@ class FileUploader extends Editor {
         const fileName = this._$fileInput.val().replace(/^.*\\/, '');
         const files = this._$fileInput.prop('files');
 
-        if(files && !files.length) {
+        if(files && !files.length && this.option('uploadMode') !== 'useForm') {
             return;
         }
 
@@ -336,7 +344,12 @@ class FileUploader extends Editor {
             this._$inputLabel = $('<div>');
         }
 
-        this._$inputLabel.text(this.option('labelText'));
+        this._updateInputLabelText();
+    }
+
+    _updateInputLabelText() {
+        const correctedValue = this._isInteractionDisabled() ? '' : this.option('labelText');
+        this._$inputLabel.text(correctedValue);
     }
 
     _focusTarget() {
@@ -445,23 +458,23 @@ class FileUploader extends Editor {
     }
 
     _createUploadStartedAction() {
-        this._uploadStartedAction = this._createActionByOption('onUploadStarted');
+        this._uploadStartedAction = this._createActionByOption('onUploadStarted', { excludeValidators: ['readOnly'] });
     }
 
     _createUploadedAction() {
-        this._uploadedAction = this._createActionByOption('onUploaded');
+        this._uploadedAction = this._createActionByOption('onUploaded', { excludeValidators: ['readOnly'] });
     }
 
     _createProgressAction() {
-        this._progressAction = this._createActionByOption('onProgress');
+        this._progressAction = this._createActionByOption('onProgress', { excludeValidators: ['readOnly'] });
     }
 
     _createUploadAbortedAction() {
-        this._uploadAbortedAction = this._createActionByOption('onUploadAborted');
+        this._uploadAbortedAction = this._createActionByOption('onUploadAborted', { excludeValidators: ['readOnly'] });
     }
 
     _createUploadErrorAction() {
-        this._uploadErrorAction = this._createActionByOption('onUploadError');
+        this._uploadErrorAction = this._createActionByOption('onUploadError', { excludeValidators: ['readOnly'] });
     }
 
     _createFile(value) {
@@ -596,6 +609,7 @@ class FileUploader extends Editor {
                 onClick: () => this._removeFile(file),
                 icon: 'close',
                 visible: this.option('allowCanceling'),
+                disabled: this.option('readOnly'),
                 integrationOptions: {}
             }
         );
@@ -683,7 +697,8 @@ class FileUploader extends Editor {
         this._selectButton = this._createComponent($button, Button, {
             text: this.option('selectButtonText'),
             focusStateEnabled: false,
-            integrationOptions: {}
+            integrationOptions: {},
+            disabled: this.option('readOnly')
         });
 
         // NOTE: click triggering on input 'file' works correctly only in native click handler when device is used
@@ -700,7 +715,7 @@ class FileUploader extends Editor {
             return;
         }
 
-        if(this.option('disabled')) {
+        if(this.option('disabled') || this.option('readOnly')) {
             return false;
         }
 
@@ -732,17 +747,17 @@ class FileUploader extends Editor {
     }
 
     _shouldDragOverBeRendered() {
-        return this.option('uploadMode') !== 'useForm' || this.option('nativeDropSupported');
+        return !this.option('readOnly') && (this.option('uploadMode') !== 'useForm' || this.option('nativeDropSupported'));
+    }
+
+    _isInteractionDisabled() {
+        return this.option('readOnly') || this.option('disabled');
     }
 
     _renderInputContainer() {
         this._$inputContainer = $('<div>')
             .addClass(FILEUPLOADER_INPUT_CONTAINER_CLASS)
             .appendTo(this._$inputWrapper);
-
-        if(!this._shouldDragOverBeRendered()) {
-            this._$inputContainer.css('display', 'none');
-        }
 
         this._$fileInput
             .addClass(FILEUPLOADER_INPUT_CLASS);
@@ -921,7 +936,7 @@ class FileUploader extends Editor {
                     return true;
                 }
             } else {
-                allowedType = allowedType.replace('*', '');
+                allowedType = allowedType.replace(new RegExp('\\*', 'g'), '');
 
                 if(file.type.match(new RegExp(allowedType, 'i'))) {
                     return true;
@@ -1058,10 +1073,18 @@ class FileUploader extends Editor {
         return this._$inputWrapper;
     }
 
-    _optionChanged(args) {
-        const value = args.value;
+    _updateReadOnlyState() {
+        const readOnly = this.option('readOnly');
+        this._selectButton.option('disabled', readOnly);
+        this._files.forEach(file => file.cancelButton?.option('disabled', readOnly));
+        this._updateInputLabelText();
+        this._renderDragEvents();
+    }
 
-        switch(args.name) {
+    _optionChanged(args) {
+        const { name, value } = args;
+
+        switch(name) {
             case 'height':
             case 'width':
                 this._updateFileNameMaxWidth();
@@ -1092,6 +1115,10 @@ class FileUploader extends Editor {
                     this.reset();
                 }
                 break;
+            case 'readOnly':
+                this._updateReadOnlyState();
+                super._optionChanged(args);
+                break;
             case 'selectButtonText':
                 this._selectButton.option('text', value);
                 break;
@@ -1113,7 +1140,7 @@ class FileUploader extends Editor {
                 this._invalidate();
                 break;
             case 'labelText':
-                this._$inputLabel.text(value);
+                this._updateInputLabelText();
                 break;
             case 'showFileList':
                 if(!this._preventRecreatingFiles) {
@@ -1162,7 +1189,7 @@ class FileUploader extends Editor {
                 this._invalidate();
                 break;
             case 'inputAttr':
-                this._applyInputAttributes(value);
+                this._applyInputAttributes(this.option(name));
                 break;
             default:
                 super._optionChanged(args);
@@ -1237,7 +1264,7 @@ class FileUploadStrategyBase {
     }
 
     abortUpload(file) {
-        if(file._isError || file._isLoaded || file.isAborted) {
+        if(file._isError || file._isLoaded || file.isAborted || !file.uploadStarted) {
             return;
         }
 
@@ -1398,7 +1425,7 @@ class ChunksFileUploadStrategyBase extends FileUploadStrategyBase {
                         file.onLoad.fire();
                     }
 
-                    this._sendChunk(file, chunksData);
+                    setTimeout(() => this._sendChunk(file, chunksData));
                 })
                 .fail(error => {
                     if(this._shouldHandleError(error)) {

@@ -8,8 +8,9 @@ import translator from 'animation/translator';
 import { DataSource } from 'data/data_source/data_source';
 import subscribes from 'ui/scheduler/ui.scheduler.subscribes';
 import dateSerialization from 'core/utils/date_serialization';
-import { SchedulerTestWrapper, isDesktopEnvironment } from './helpers.js';
+import { createWrapper, SchedulerTestWrapper, isDesktopEnvironment } from './helpers.js';
 import dateUtils from 'core/utils/date';
+import ArrayStore from 'data/array_store';
 
 import 'common.css!';
 import 'generic_light.css!';
@@ -41,6 +42,61 @@ QUnit.module('Integration: Recurring Appointments', {
         this.clock.restore();
     }
 });
+
+if(isDesktopEnvironment()) {
+    QUnit.test('Key property should be removed in excluded appointment from recurrence(T929772)', function(assert) {
+        const data = [{
+            id: 1,
+            text: 'Appointment',
+            startDate: new Date(2017, 4, 22, 1, 30),
+            endDate: new Date(2017, 4, 22, 2, 30),
+            recurrenceRule: 'FREQ=DAILY',
+        }];
+
+        const scheduler = createWrapper({
+            dataSource: {
+                store: new ArrayStore({
+                    data: data,
+                    key: 'id'
+                })
+            },
+            views: ['week'],
+            currentView: 'week',
+            currentDate: new Date(2017, 4, 22),
+            onAppointmentAdding: e => {
+                assert.equal(e.appointmentData.id, undefined, 'key property \'id\' shouldn\'t exist in appointment on onAppointmentAdding event');
+            },
+            onAppointmentAdded: e => {
+                assert.equal(e.appointmentData.id, undefined, 'key property \'id\' shouldn\'t exist in appointment on onAppointmentAdded event');
+            },
+            height: 600
+        });
+
+        const appointment = scheduler.appointments.getAppointment(3);
+        const pointer = pointerMock(appointment).start();
+        const offset = appointment.offset();
+
+        pointer
+            .down(offset.left, offset.top)
+            .move(0, 100);
+
+        pointer.up();
+
+        scheduler.appointmentPopup.dialog.clickEditAppointment();
+
+        const appointments = scheduler.instance.getDataSource().items();
+        const recurrenceAppointment = appointments[0];
+        const excludedAppointment = appointments[1];
+
+        const expectedDate = new Date(excludedAppointment.startDate);
+        expectedDate.setHours(recurrenceAppointment.startDate.getHours() + 1);
+
+        assert.equal(excludedAppointment.startDate.valueOf(), expectedDate.valueOf(), 'appointment should be shifted down');
+        assert.equal(excludedAppointment.id.length, 36, 'id property should be equal GUID');
+
+        assert.expect(4);
+    });
+}
 
 QUnit.test('Tasks should be duplicated according to recurrence rule', function(assert) {
     const tasks = [
@@ -247,8 +303,8 @@ QUnit.test('Recurrent Task dragging with \'occurrence\' recurrenceEditMode', fun
         recurrenceException: ''
     };
 
-    const pointer = pointerMock($(this.instance.$element()).find('.dx-scheduler-appointment').eq(0)).start().down().move(10, 10);
-    $(this.instance.$element()).find('.dx-scheduler-date-table-cell').eq(5).trigger(dragEvents.enter);
+    const pointer = pointerMock($(this.scheduler.appointments.getAppointment(0))).start().down().move(10, 10);
+    $(this.scheduler.workSpace.getCell(5)).trigger(dragEvents.enter);
     pointer.up();
 
     const updatedSingleItem = this.instance.option('dataSource').items()[1];
@@ -260,6 +316,51 @@ QUnit.test('Recurrent Task dragging with \'occurrence\' recurrenceEditMode', fun
 
     assert.deepEqual(updatedSingleItem, updatedItem, 'New data is correct');
 
+    assert.equal(updatedRecurringItem.recurrenceException, dateSerialization.serializeDate(exceptionDate, 'yyyyMMddTHHmmssZ'), 'Exception for recurrence appointment is correct');
+});
+
+QUnit.test('Recurrent Task dragging with \'occurrence\' recurrenceEditMode, \'hourly\' recurrence', function(assert) {
+    const data = new DataSource({
+        store: [
+            {
+                text: 'Task 1',
+                startDate: new Date(2015, 1, 9, 1, 0),
+                endDate: new Date(2015, 1, 9, 2, 0),
+                recurrenceRule: 'FREQ=HOURLY;COUNT=3'
+            }
+        ]
+    });
+
+    this.createInstance({
+        currentDate: new Date(2015, 1, 9),
+        dataSource: data,
+        currentView: 'week',
+        editing: true,
+        firstDayOfWeek: 1,
+        recurrenceEditMode: 'occurrence'
+    });
+
+    const updatedItem = {
+        text: 'Task 1',
+        startDate: new Date(2015, 1, 14),
+        endDate: new Date(2015, 1, 14, 1),
+        allDay: false,
+        recurrenceRule: '',
+        recurrenceException: ''
+    };
+
+    const pointer = pointerMock($(this.scheduler.appointments.getAppointment(2))).start().down().move(10, 10);
+    $(this.scheduler.workSpace.getCell(5)).trigger(dragEvents.enter);
+    pointer.up();
+
+    const updatedSingleItem = this.instance.option('dataSource').items()[1];
+    const updatedRecurringItem = this.instance.option('dataSource').items()[0];
+    const exceptionDate = new Date(2015, 1, 9, 3, 0, 0, 0);
+
+    delete updatedSingleItem.initialCoordinates;
+    delete updatedSingleItem.initialSize;
+
+    assert.deepEqual(updatedSingleItem, updatedItem, 'New data is correct');
     assert.equal(updatedRecurringItem.recurrenceException, dateSerialization.serializeDate(exceptionDate, 'yyyyMMddTHHmmssZ'), 'Exception for recurrence appointment is correct');
 });
 
@@ -1615,5 +1716,36 @@ $.each(['minutely', 'hourly'], (_, value) => {
         const lastRecurrentAppointment = appointments[appointmentCount - 2];
 
         assert.ok(translator.locate($(lastAppointment)).top > translator.locate($(lastRecurrentAppointment)).top, 'Last occurrence renders correctly');
+    });
+    QUnit.test(`RecurrenceException should be formed correctly after appointment deletion, freq=${value}`, function(assert) {
+        this.createInstance({
+            views: ['week'],
+            currentView: 'week',
+            height: 600,
+            dataSource: [{
+                text: 'Recurrence',
+                startDate: apptStartDate,
+                endDate: apptEndDate,
+                recurrenceRule: `FREQ=${value.toUpperCase()};COUNT=3`
+            }],
+            currentDate: new Date(2019, 2, 30)
+        });
+
+        this.scheduler.appointments.click(1);
+        this.clock.tick(300);
+
+        this.scheduler.tooltip.clickOnDeleteButton();
+        $('.dx-dialog-buttons .dx-button').eq(1).trigger('dxclick');
+
+        const updatedRecurringItem = this.scheduler.instance.option('dataSource')[0];
+        let exceptionDate;
+
+        if(value === 'hourly') {
+            exceptionDate = new Date(2019, 2, 30, 3, 0);
+        } else if(value === 'minutely') {
+            exceptionDate = new Date(2019, 2, 30, 2, 1);
+        }
+
+        assert.equal(updatedRecurringItem.recurrenceException, dateSerialization.serializeDate(exceptionDate, 'yyyyMMddTHHmmssZ'), 'Exception for recurrence appointment is correct');
     });
 });

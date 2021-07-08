@@ -42,6 +42,7 @@ const EDIT_MODE_FORM = 'form';
 const EDIT_MODE_POPUP = 'popup';
 const REVERT_TOOLTIP_CLASS = 'revert-tooltip';
 const GROUP_CELL_CLASS = 'dx-group-cell';
+const GROUP_ROW_CLASS = 'dx-group-row';
 
 function getColumnId(that, column) {
     return that._columnsController.getColumnId(column);
@@ -138,7 +139,7 @@ const AdaptiveColumnsController = modules.ViewController.inherit({
 
         return function(options, container) {
             const $container = $(container);
-            const columnIndex = that._columnsController.getVisibleIndex(column.visibleIndex);
+            const columnIndex = that._columnsController.getVisibleIndex(column.index);
             const templateOptions = extend({}, cellOptions);
 
             const renderFormTemplate = function() {
@@ -359,40 +360,48 @@ const AdaptiveColumnsController = modules.ViewController.inherit({
         const visibleIndex = this._getAdaptiveColumnVisibleIndex(visibleColumns);
         if(typeUtils.isDefined(visibleIndex)) {
             resultWidths[visibleIndex] = HIDDEN_COLUMNS_WIDTH;
-            this._addCssClassToColumn(COMMAND_ADAPTIVE_HIDDEN_CLASS, visibleIndex);
+            this._hideVisibleColumn({ isCommandColumn: true, visibleIndex });
         }
     },
 
-    _removeCssClassFromColumn: function(cssClassName) {
-        let $cells;
+    _showHiddenCellsInView: function({ $cells, isCommandColumn }) {
+        const cssClassNameToRemove = isCommandColumn ? COMMAND_ADAPTIVE_HIDDEN_CLASS : this.addWidgetPrefix(HIDDEN_COLUMN_CLASS);
+        $cells.removeClass(cssClassNameToRemove);
+    },
 
+    _showHiddenColumns: function() {
         for(let i = 0; i < COLUMN_VIEWS.length; i++) {
             const view = this.getView(COLUMN_VIEWS[i]);
             if(view && view.isVisible() && view.element()) {
-                $cells = view.element().find('.' + cssClassName);
-                $cells.removeClass(cssClassName);
+                const viewName = view.name;
+                const $hiddenCommandCells = view.element().find('.' + COMMAND_ADAPTIVE_HIDDEN_CLASS);
+                this._showHiddenCellsInView({
+                    viewName,
+                    $cells: $hiddenCommandCells,
+                    isCommandColumn: true
+                });
+                const $hiddenCells = view.element().find('.' + this.addWidgetPrefix(HIDDEN_COLUMN_CLASS));
+                this._showHiddenCellsInView({
+                    viewName,
+                    $cells: $hiddenCells
+                });
             }
         }
-    },
-
-    _removeCssClassesFromColumns: function() {
-        this._removeCssClassFromColumn(COMMAND_ADAPTIVE_HIDDEN_CLASS);
-        this._removeCssClassFromColumn(this.addWidgetPrefix(HIDDEN_COLUMN_CLASS));
     },
 
     _isCellValid: function($cell) {
         return $cell && $cell.length && !$cell.hasClass(MASTER_DETAIL_CELL_CLASS) && !$cell.hasClass(GROUP_CELL_CLASS);
     },
 
-    _addCssClassToColumn: function(cssClassName, visibleIndex) {
+    _hideVisibleColumn: function({ isCommandColumn, visibleIndex }) {
         const that = this;
         COLUMN_VIEWS.forEach(function(viewName) {
             const view = that.getView(viewName);
-            view && that._addCssClassToViewColumn(view, cssClassName, visibleIndex);
+            view && that._hideVisibleColumnInView({ view, isCommandColumn, visibleIndex });
         });
     },
 
-    _addCssClassToViewColumn: function(view, cssClassName, visibleIndex) {
+    _hideVisibleColumnInView: function({ view, isCommandColumn, visibleIndex }) {
         const viewName = view.name;
         let $cellElement;
         const column = this._columnsController.getVisibleColumns()[visibleIndex];
@@ -407,12 +416,43 @@ const AdaptiveColumnsController = modules.ViewController.inherit({
                 if(!cancelClassAdding) {
                     const currentVisibleIndex = viewName === COLUMN_HEADERS_VIEW ? this._columnsController.getVisibleIndex(column.index, rowIndex) : visibleIndex;
                     if(currentVisibleIndex >= 0) {
-                        $cellElement = $rowElements.eq(rowIndex).children().eq(currentVisibleIndex);
-                        this._isCellValid($cellElement) && $cellElement.addClass(cssClassName);
+                        const $rowElement = $rowElements.eq(rowIndex);
+                        $cellElement = this._findCellElementInRow($rowElement, currentVisibleIndex);
+                        this._isCellValid($cellElement) && this._hideVisibleCellInView({
+                            viewName,
+                            isCommandColumn,
+                            $cell: $cellElement,
+                        });
                     }
                 }
             }
         }
+    },
+
+    _findCellElementInRow($rowElement, visibleColumnIndex) {
+        const $rowCells = $rowElement.children();
+        let visibleIndex = visibleColumnIndex;
+        let cellIsInsideGroup = false;
+        if($rowElement.hasClass(GROUP_ROW_CLASS)) {
+            const $groupCell = $rowElement.find(`.${GROUP_CELL_CLASS}`);
+            const colSpan = $groupCell.attr('colspan');
+            if($groupCell.length && typeUtils.isDefined(colSpan)) {
+                const groupCellLength = parseInt(colSpan);
+                const endGroupIndex = $groupCell.index() + groupCellLength - 1;
+                if(visibleColumnIndex > endGroupIndex) {
+                    visibleIndex = visibleColumnIndex - groupCellLength + 1;
+                } else {
+                    cellIsInsideGroup = true;
+                }
+            }
+        }
+        const $cellElement = !cellIsInsideGroup ? $rowCells.eq(visibleIndex) : undefined;
+        return $cellElement;
+    },
+
+    _hideVisibleCellInView: function({ $cell, isCommandColumn }) {
+        const cssClassNameToAdd = isCommandColumn ? COMMAND_ADAPTIVE_HIDDEN_CLASS : this.addWidgetPrefix(HIDDEN_COLUMN_CLASS);
+        $cell.addClass(cssClassNameToAdd);
     },
 
     _getEditMode: function() {
@@ -435,7 +475,7 @@ const AdaptiveColumnsController = modules.ViewController.inherit({
             const $rootElement = that.component.$element();
             let rootElementWidth = $rootElement.width() - that._getCommandColumnsWidth();
             const getVisibleContentColumns = function() {
-                return visibleColumns.filter(item => !item.command && this._hiddenColumns.filter(i => i.dataField === item.dataField).length === 0);
+                return visibleColumns.filter(item => !item.command && this._hiddenColumns.filter(i => i.index === item.index).length === 0);
             }.bind(this);
             let visibleContentColumns = getVisibleContentColumns();
             const contentColumnsCount = visibleContentColumns.length;
@@ -485,7 +525,7 @@ const AdaptiveColumnsController = modules.ViewController.inherit({
 
                     rootElementWidth += that._calculateColumnWidth(column, rootElementWidth, visibleContentColumns, columnsCanFit);
 
-                    that._addCssClassToColumn(that.addWidgetPrefix(HIDDEN_COLUMN_CLASS), visibleIndex);
+                    that._hideVisibleColumn({ visibleIndex });
                     resultWidths[visibleIndex] = HIDDEN_COLUMNS_WIDTH;
                     this._hiddenColumns.push(column);
                     visibleContentColumns = getVisibleContentColumns();
@@ -740,7 +780,7 @@ module.exports = {
                     if(item && item.rowType === ADAPTIVE_ROW_TYPE) {
                         return this._adaptiveColumnsController.getItemContentByColumnIndex(columnIdentifier);
                     } else {
-                        return this.callBase(rowIndex, columnIdentifier);
+                        return this.callBase.apply(this, arguments);
                     }
                 },
 
@@ -872,7 +912,7 @@ module.exports = {
                 },
 
                 _afterSaveEditData: function() {
-                    this.callBase();
+                    this.callBase.apply(this, arguments);
                     const deferred = new Deferred();
                     if(this._isRowEditMode() && this._adaptiveController.hasHiddenColumns()) {
                         when(this.getController('validating').validate(true)).done((isValid) => {
@@ -975,7 +1015,7 @@ module.exports = {
                 },
 
                 _toggleBestFitMode: function(isBestFit) {
-                    isBestFit && this._adaptiveColumnsController._removeCssClassesFromColumns();
+                    isBestFit && this._adaptiveColumnsController._showHiddenColumns();
                     this.callBase(isBestFit);
                 },
 

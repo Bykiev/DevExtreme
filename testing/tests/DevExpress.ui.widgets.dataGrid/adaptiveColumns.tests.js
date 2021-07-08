@@ -301,6 +301,37 @@ QUnit.module('AdaptiveColumns', {
         assert.ok(checkAdaptiveWidth($cols.get(3).style.width), 'Fourth column is hidden');
     });
 
+    // T885383
+    QUnit.test('Columns without dataField should be hidden if need', function(assert) {
+        // arrange
+        $('.dx-datagrid').width(265);
+
+        this.columns = [
+            { caption: 'firstName blablabla', hidingPriority: 0 },
+            { caption: 'lastName', hidingPriority: 1 },
+            { caption: 'address blablabla', hidingPriority: 2 },
+            { caption: 'country blablablabla', hidingPriority: 3 }
+        ];
+
+        this.options = {
+            showColumnHeaders: true
+        };
+
+        setupDataGrid(this);
+        this.gridView.render($('#container'));
+        this.resizingController.updateDimensions();
+        this.clock.tick();
+
+        // act
+        const $cols = $('.dx-datagrid-rowsview col');
+
+        // assert
+        assert.ok(checkAdaptiveWidth($cols.get(0).style.width), 'First column is hidden');
+        assert.ok(checkAdaptiveWidth($cols.get(1).style.width), 'Second column is hidden');
+        assert.ok(checkAdaptiveWidth($cols.get(2).style.width), 'Third column is hidden');
+        assert.notOk(checkAdaptiveWidth($cols.get(3).style.width), 'Fourth column is not hidden');
+    });
+
     // T402287
     QUnit.test('Hidden columns must have zero widths for virtual scrolling table', function(assert) {
         // arrange
@@ -516,7 +547,8 @@ QUnit.module('AdaptiveColumns', {
         this.columns = [
             { dataField: 'firstName', index: 0 },
             { dataField: 'lastName', index: 1 },
-            { dataField: 'lookup',
+            {
+                dataField: 'lookup',
                 lookup: {
                     dataSource: [
                         { id: 1, name: 'Test 1' },
@@ -832,7 +864,8 @@ QUnit.module('AdaptiveColumns', {
                 index: 1,
                 calculateCellValue: function(rowData) {
                     return rowData.firstName + ' ' + rowData.lastName;
-                } }
+                }
+            }
         ];
         setupDataGrid(this);
         this.rowsView.render($('#container'));
@@ -1465,7 +1498,8 @@ QUnit.module('AdaptiveColumns', {
         this.columns = [
             { dataField: 'firstName', index: 0, allowEditing: true, allowExporting: true },
             { dataField: 'lastName', index: 2, allowEditing: true, allowExporting: true },
-            { dataField: 'template', index: 1, allowEditing: true, allowExporting: true,
+            {
+                dataField: 'template', index: 1, allowEditing: true, allowExporting: true,
                 cellTemplate: function(container) {
                     $('<div>')
                         .addClass('test-template')
@@ -1859,6 +1893,64 @@ QUnit.module('AdaptiveColumns', {
 
         assert.ok($rowElement.hasClass('dx-data-row'), 'data row');
         assert.ok($cellElements.eq(1).hasClass('dx-datagrid-hidden-column'), 'firstName column is hidden');
+    });
+
+    QUnit.test('Last summary group cell should not be hidden (T922559) ', function(assert) {
+        // arrange, act
+        $('.dx-datagrid').width(950);
+        this.items = [
+            { id: 1, name: 'Test', name1: 'Test2', name2: 'Test3', count1: 0, count2: 0 }
+        ];
+        this.options = {
+            keyExpr: 'id',
+            columns: [
+                { dataField: 'name', groupIndex: 0 },
+                { dataField: 'name1', hidingPriority: 0, width: 200 },
+                { dataField: 'name2', width: 150 },
+                { dataField: 'count1', hidingPriority: 1, width: 200 },
+                { dataField: 'count2', width: 500 }
+            ],
+            grouping: {
+                autoExpandAll: false
+            },
+            summary: {
+                groupItems: [
+                    {
+                        column: 'count1',
+                        summaryType: 'sum',
+                        alignByColumn: true
+                    },
+                    {
+                        column: 'count2',
+                        summaryType: 'sum',
+                        alignByColumn: true
+                    }
+                ]
+            }
+        };
+        setupDataGrid(this);
+        this.rowsView.render($('#container'));
+        this.resizingController.updateDimensions();
+
+        let $rowElement = $(this.getRowElement(0));
+        let $summaryElements = $rowElement.find('.dx-datagrid-summary-item');
+
+        // assert
+        assert.equal($summaryElements.length, 2);
+        $summaryElements.each((_, element) => {
+            assert.notOk($(element).parent('td').hasClass('dx-datagrid-hidden-column'), 'summary item is not hidden');
+        });
+
+        // act
+        $('.dx-datagrid').width(750);
+        this.resizingController.updateDimensions();
+        $rowElement = $(this.getRowElement(0));
+        $summaryElements = $rowElement.find('.dx-datagrid-summary-item');
+
+        // assert
+        assert.equal($summaryElements.length, 2);
+        assert.ok($summaryElements.eq(0).parent('td').hasClass('dx-datagrid-hidden-column'), 'the first summary item is hidden');
+        assert.notOk($summaryElements.eq(1).parent('td').hasClass('dx-datagrid-hidden-column'), 'the last summary item is not hidden');
     });
 });
 
@@ -3916,7 +4008,8 @@ QUnit.module('Validation', {
         this.options = {
             columns: [
                 { dataField: 'firstName', index: 0, allowEditing: true },
-                { dataField: 'lastName', index: 1, allowEditing: true,
+                {
+                    dataField: 'lastName', index: 1, allowEditing: true,
                     cellTemplate: function($container, options) {
                         return $('<span>').text(options.value);
                     },
@@ -4083,7 +4176,8 @@ QUnit.module('Validation', {
                     index: 1, allowEditing: true,
                     validationRules: [{ type: 'required' }]
                 },
-                { dataField: 'description',
+                {
+                    dataField: 'description',
                     index: 2,
                     allowEditing: true
                 }

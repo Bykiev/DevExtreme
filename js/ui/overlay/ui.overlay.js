@@ -97,8 +97,12 @@ const forceRepaint = function($element) {
 };
 
 
-const getElement = function(value) {
-    return value && $(value.target || value);
+const getElement = value => {
+    if(typeUtils.isEvent(value)) {
+        value = value.target;
+    }
+
+    return $(value);
 };
 
 ready(function() {
@@ -227,7 +231,8 @@ const Overlay = Widget.inherit({
             boundaryOffset: { h: 0, v: 0 },
             propagateOutsideClick: false,
             ignoreChildEvents: true,
-            _checkParentVisibility: true
+            _checkParentVisibility: true,
+            _fixedPosition: false
         });
     },
 
@@ -608,7 +613,8 @@ const Overlay = Widget.inherit({
                         that._renderVisibility(false);
 
                         completeHideAnimation.apply(this, arguments);
-                        that._actions.onHidden();
+                        that._hideAnimationProcessing = false;
+                        that._actions?.onHidden();
 
                         deferred.resolve();
                     },
@@ -616,6 +622,7 @@ const Overlay = Widget.inherit({
                     function() {
                         that._$content.css('pointerEvents', 'none');
                         startHideAnimation.apply(this, arguments);
+                        that._hideAnimationProcessing = true;
                     }
                 );
             }
@@ -997,9 +1004,13 @@ const Overlay = Widget.inherit({
             isNative: true
         }, function(e) {
             const originalEvent = e.originalEvent.originalEvent;
+            const { type } = originalEvent || {};
+            const isWheel = type === 'wheel';
+            const isMouseMove = type === 'mousemove';
+            const isScrollByWheel = isWheel && !eventUtils.isCommandKeyPressed(e);
             e._cancelPreventDefault = true;
 
-            if(originalEvent && originalEvent.type !== 'mousemove' && e.cancelable !== false) {
+            if(originalEvent && e.cancelable !== false && (!isMouseMove && !isWheel || isScrollByWheel)) {
                 e.preventDefault();
             }
         });
@@ -1147,12 +1158,18 @@ const Overlay = Widget.inherit({
     },
 
     _useFixedPosition: function() {
+        return this._shouldFixBodyPosition()
+            || this.option('_fixedPosition');
+    },
+
+    _shouldFixBodyPosition: function() {
         const $container = this._getContainer();
-        return this._isWindow($container) && (!iOS || this._bodyScrollTop !== undefined);
+        return this._isWindow($container)
+            && (!iOS || this._bodyScrollTop !== undefined);
     },
 
     _toggleSafariScrolling: function(scrollingEnabled) {
-        if(iOS && this._useFixedPosition()) {
+        if(iOS && this._shouldFixBodyPosition()) {
             const body = domAdapter.getBody();
             if(scrollingEnabled) {
                 $(body).removeClass(PREVENT_SAFARI_SCROLLING_CLASS);
@@ -1181,8 +1198,8 @@ const Overlay = Widget.inherit({
 
         const isWindow = this._isWindow($container);
 
-        wrapperWidth = isWindow ? null : $container.outerWidth(),
-        wrapperHeight = isWindow ? null : $container.outerHeight();
+        wrapperWidth = isWindow ? '' : $container.outerWidth(),
+        wrapperHeight = isWindow ? '' : $container.outerHeight();
 
         this._$wrapper.css({
             width: wrapperWidth,
@@ -1208,8 +1225,7 @@ const Overlay = Widget.inherit({
         let positionOf = null;
 
         if(!container && position) {
-            const isEvent = !!(position.of && position.of.preventDefault);
-            positionOf = isEvent ? window : (position.of || window);
+            positionOf = typeUtils.isEvent(position.of) ? window : (position.of || window);
         }
 
         return getElement(container || positionOf);
@@ -1429,6 +1445,9 @@ const Overlay = Widget.inherit({
                 this._contentAlreadyRendered = false;
                 this.callBase(args);
                 break;
+            case '_fixedPosition':
+                this._fixWrapperPosition();
+                break;
             default:
                 this.callBase(args);
         }
@@ -1471,8 +1490,12 @@ const Overlay = Widget.inherit({
     },
 
     repaint: function() {
-        this._renderGeometry();
-        domUtils.triggerResizeEvent(this._$content);
+        if(this._contentAlreadyRendered) {
+            this._renderGeometry();
+            domUtils.triggerResizeEvent(this._$content);
+        } else {
+            this.callBase();
+        }
     }
 });
 

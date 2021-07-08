@@ -6,6 +6,7 @@ import styleUtils from '../../core/utils/style';
 import { isDefined, isNumeric, isString } from '../../core/utils/type';
 import { each } from '../../core/utils/iterator';
 import { extend } from '../../core/utils/extend';
+import { getBoundingRect } from '../../core/utils/position';
 import { isEmpty } from '../../core/utils/string';
 import { getDefaultAlignment } from '../../core/utils/position';
 import { compileGetter } from '../../core/utils/data';
@@ -31,6 +32,10 @@ const EMPTY_CLASS = 'dx-empty';
 const ROW_INSERTED_ANIMATION_CLASS = 'row-inserted-animation';
 
 const LOADPANEL_HIDE_TIMEOUT = 200;
+
+function getMaxHorizontalScrollOffset(scrollable) {
+    return scrollable ? scrollable.scrollWidth() - scrollable.clientWidth() : 0;
+}
 
 module.exports = {
     defaultOptions: function() {
@@ -304,10 +309,14 @@ module.exports = {
 
                 _handleScroll: function(e) {
                     const that = this;
+                    const rtlEnabled = that.option('rtlEnabled');
 
                     that._isScrollByEvent = !!e.event;
                     that._scrollTop = e.scrollOffset.top;
                     that._scrollLeft = e.scrollOffset.left;
+                    if(rtlEnabled) {
+                        this._scrollRight = getMaxHorizontalScrollOffset(e.component) - this._scrollLeft;
+                    }
                     that.scrollChanged.fire(e.scrollOffset, that.name);
                 },
 
@@ -333,7 +342,7 @@ module.exports = {
 
                 _updateContent: function(newTableElement, change) {
                     const that = this;
-                    const tableElement = that._getTableElement();
+                    const tableElement = that.getTableElement();
                     const contentElement = that._findContentElement();
                     const changeType = change && change.changeType;
                     const executors = [];
@@ -366,7 +375,10 @@ module.exports = {
                                             break;
                                         case 'insert':
                                             if(!$rowsElement.length) {
-                                                $newRowElement.prependTo(tableElement.children('tbody'));
+                                                if(tableElement) {
+                                                    const target = $newRowElement.is('tbody') ? tableElement : tableElement.children('tbody');
+                                                    $newRowElement.prependTo(target);
+                                                }
                                             } else if($rowElement.length) {
                                                 $newRowElement.insertBefore($rowElement);
                                             } else {
@@ -389,7 +401,7 @@ module.exports = {
                             newTableElement.remove();
                             break;
                         default:
-                            that._setTableElement(newTableElement);
+                            that.setTableElement(newTableElement);
                             contentElement.addClass(that.addWidgetPrefix(CONTENT_CLASS));
                             that._renderContent(contentElement, newTableElement);
                             break;
@@ -463,13 +475,13 @@ module.exports = {
                     const $rowElements = $tableElement.children('tbody').children().not('.dx-virtual-row').not('.' + FREE_SPACE_CLASS);
 
                     return $rowElements.toArray().reduce(function(sum, row) {
-                        return sum + row.getBoundingClientRect().height;
+                        return sum + getBoundingRect(row).height;
                     }, 0);
                 },
 
                 _updateRowHeight: function() {
                     const that = this;
-                    const $tableElement = that._getTableElement();
+                    const $tableElement = that.getTableElement();
                     const itemsCount = that._dataController.items().length;
 
                     if($tableElement && that._needUpdateRowHeight(itemsCount)) {
@@ -512,7 +524,8 @@ module.exports = {
                         evaluate: function(expr) {
                             const getter = compileGetter(expr);
                             return getter(item.data);
-                        } }, e, item));
+                        }
+                    }, e, item));
                 },
 
                 _rowDblClick: function(e) {
@@ -643,8 +656,8 @@ module.exports = {
                         }
                     };
 
-                    if(!isDefined(that._getTableElement())) {
-                        that._setTableElement($table);
+                    if(!isDefined(that.getTableElement())) {
+                        that.setTableElement($table);
                         that._renderScrollable(true);
                         that.resizeCompleted.add(resizeCompletedHandler);
                     } else {
@@ -837,8 +850,9 @@ module.exports = {
 
                 _getHeightCorrection: function() {
                     const isZoomedWebkit = browser.webkit && this._getDevicePixelRatio() >= 2; // T606935
+                    const isChromeLatest = browser.chrome && browser.version >= 91;
                     const hasExtraBorderTop = browser.mozilla && browser.version >= 70 && !this.option('showRowLines');
-                    return isZoomedWebkit || hasExtraBorderTop ? 1 : 0;
+                    return isZoomedWebkit || hasExtraBorderTop || isChromeLatest ? 1 : 0;
                 },
 
                 _columnOptionChanged: function(e) {
@@ -865,6 +879,7 @@ module.exports = {
                     that._rowHeight = 0;
                     that._scrollTop = 0;
                     that._scrollLeft = -1;
+                    that._scrollRight = 0;
                     that._hasHeight = false;
                     dataController.loadingChanged.add(function(isLoading, messageText) {
                         that.setLoading(isLoading, messageText);
@@ -872,7 +887,9 @@ module.exports = {
 
                     dataController.dataSourceChanged.add(function() {
                         if(that._scrollLeft >= 0) {
-                            that._handleScroll({ scrollOffset: { top: that._scrollTop, left: that._scrollLeft } });
+                            that._handleScroll({
+                                component: that.getScrollable(),
+                                scrollOffset: { top: that._scrollTop, left: that._scrollLeft } });
                         }
                     });
                 },
@@ -953,6 +970,15 @@ module.exports = {
                 _updateHorizontalScrollPosition: function() {
                     const scrollable = this.getScrollable();
                     const scrollLeft = scrollable && scrollable.scrollOffset().left;
+                    const rtlEnabled = this.option('rtlEnabled');
+
+                    if(rtlEnabled) {
+                        const maxHorizontalScrollOffset = getMaxHorizontalScrollOffset(scrollable);
+                        const scrollRight = maxHorizontalScrollOffset - scrollLeft;
+                        if(scrollRight !== this._scrollRight) {
+                            this._scrollLeft = maxHorizontalScrollOffset - this._scrollRight;
+                        }
+                    }
 
                     if(this._scrollLeft >= 0 && scrollLeft !== this._scrollLeft) {
                         scrollable.scrollTo({ x: this._scrollLeft });
@@ -964,6 +990,7 @@ module.exports = {
 
                     that._fireColumnResizedCallbacks();
                     that._updateRowHeight();
+
                     deferRender(function() {
                         that._renderScrollable();
                         that.renderNoDataText();
@@ -1037,7 +1064,7 @@ module.exports = {
                 },
 
                 _getCellElementsCore: function(rowIndex) {
-                    const $cells = this.callBase(rowIndex);
+                    const $cells = this.callBase.apply(this, arguments);
 
                     if($cells) {
                         const groupCellIndex = $cells.filter('.' + GROUP_CELL_CLASS).index();
@@ -1057,7 +1084,7 @@ module.exports = {
                     const $contentElement = that._findContentElement();
                     const contentElementOffsetTop = $contentElement && $contentElement.offset().top;
                     const items = that._dataController.items();
-                    const tableElement = that._getTableElement();
+                    const tableElement = that.getTableElement();
 
                     if(items.length && tableElement) {
                         const rowElements = that._getRowElements(tableElement).filter(':visible');

@@ -18,8 +18,9 @@ function run_ts {
 
     npm i
     npm update devextreme-internal-tools
-    npm ls devextreme-internal-tools
+    npm ls devextreme-internal-tools || :
 
+    npm run validate-declarations
     npm run update-ts
 
     if ! diff $target.current $target -U 5 > $target.diff; then
@@ -175,7 +176,7 @@ function run_test_themebuilder {
     npm run test
 }
 
-function run_test_functional {
+function run_test_testcafe {
     export DEVEXTREME_TEST_CI=true
 
     npm i
@@ -185,14 +186,7 @@ function run_test_functional {
     [ -n "$COMPONENT" ] && args="$args --componentFolder=$COMPONENT";
     [ -n "$QUARANTINE_MODE" ] && args="$args --quarantineMode=true";
 
-    npm run test-functional -- $args
-}
-
-function run_test_scss {
-    npm i
-    npx gulp generate-scss
-    npm run build-themes
-    node build/gulp/scss/tests/identical.test.js
+    npm run test-testcafe -- $args
 }
 
 function start_runner_watchdog {

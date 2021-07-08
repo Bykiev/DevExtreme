@@ -121,6 +121,8 @@ QUnit.module('Intl localization', {
                     { value: 2, format: { type: 'decimal', precision: 3 }, expected: localizeDigits('002') },
                     { value: 12, format: { type: 'decimal', precision: 3 }, expected: localizeDigits('012') },
                     { value: 123, format: { type: 'decimal', precision: 3 }, expected: localizeDigits('123') },
+                    // NOTE: T938117 - Decimal number type is rounded off when there are at least 10 decimal places.
+                    { value: 1.9999999999999, format: { type: 'decimal' }, expected: getLocalizedFixedNumber(1, 9999999999999) },
 
                     { value: 12.345, format: 'fixedPoint', expected: localizeDigits('12') },
                     { value: 12.345, format: { type: 'fixedPoint' }, expected: localizeDigits('12') },
@@ -773,6 +775,15 @@ QUnit.module('Intl localization', {
 
 QUnit.module('Exceljs format', () => {
     ExcelJSLocalizationFormatTests.runCurrencyTests([
+        { value: 'USD', expected: '$#,##0_);\\($#,##0\\)' },
+        { value: 'RUB', expected: '\\R\\U\\B#,##0_);\\(\\R\\U\\B#,##0\\)' },
+        { value: 'JPY', expected: '\\¥#,##0_);\\(\\¥#,##0\\)' },
+        { value: 'KPW', expected: '\\K\\P\\W#,##0_);\\(\\K\\P\\W#,##0\\)' },
+        { value: 'LBP', expected: '\\L\\B\\P#,##0_);\\(\\L\\B\\P#,##0\\)' },
+        { value: 'SEK', expected: '\\S\\E\\K#,##0_);\\(\\S\\E\\K#,##0\\)' }
+    ]);
+
+    ExcelJSLocalizationFormatTests.runPivotGridCurrencyTests([
         { value: 'USD', expected: '$#,##0_);\\($#,##0\\)' },
         { value: 'RUB', expected: '\\R\\U\\B#,##0_);\\(\\R\\U\\B#,##0\\)' },
         { value: 'JPY', expected: '\\¥#,##0_);\\(\\¥#,##0\\)' },

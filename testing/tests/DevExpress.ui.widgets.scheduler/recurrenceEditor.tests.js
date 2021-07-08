@@ -16,6 +16,7 @@ const REPEAT_ON_YEAR_EDITOR = 'dx-recurrence-repeat-on-year';
 const MONTH_OF_YEAR = 'dx-recurrence-selectbox-month-of-year';
 const EVERY_INTERVAL = 'dx-recurrence-numberbox-interval';
 const RECURRENCE_BUTTON_GROUP = 'dx-recurrence-button-group';
+const eventsEngine = require('events/core/events_engine');
 
 require('common.css!');
 
@@ -43,6 +44,8 @@ QUnit.test('Recurrence editor should have correct default options', function(ass
 
     assert.equal(this.instance.option('value'), null, 'value is right');
     assert.equal(this.instance.option('visible'), true, 'editor is visible');
+    assert.equal(this.instance.option('firstDayOfWeek'), undefined, 'firstDayOfWeek is right');
+    assert.ok(this.instance.option('startDate') instanceof Date, 'startDate is right');
 });
 
 QUnit.test('Recurrence editor should correctly process null value and reset inner editors to default values', function(assert) {
@@ -54,6 +57,14 @@ QUnit.test('Recurrence editor should correctly process null value and reset inne
     const freqEditor = $('.' + FREQUENCY_EDITOR).dxSelectBox('instance');
 
     assert.equal(freqEditor.option('value'), 'daily', 'freq editor default value was set');
+});
+
+$.each(['WEEKLY', 'MONTHLY', 'YEARLY'], (_, value) => {
+    QUnit.test(`Recurrence editor should not crash when FREQ=${value} is set without startDate`, function(assert) {
+        this.createInstance({ value: `FREQ=${value}` });
+
+        assert.ok(true, 'recurrenceEditor was rendered');
+    });
 });
 
 QUnit.module('Recurrence editor - freq editor', {
@@ -468,6 +479,22 @@ QUnit.test('Recurrence editor should process values from repeat-on-editor correc
     assert.equal(this.instance.option('value'), 'FREQ=WEEKLY;BYDAY=SU,MO,TU');
 });
 
+QUnit.test('Recurrence editor should not crash when BYDAY rule is blank (T928339)', function(assert) {
+    this.createInstance({
+        startDate: new Date(2020, 1, 1, 1),
+        firstDayOfWeek: 0,
+        value: 'FREQ=WEEKLY;BYDAY=MO'
+    });
+
+    const secondButton = this.instance.$element().find('.dx-button').eq(1);
+    eventsEngine.trigger(secondButton, 'dxclick');
+    const firstButton = this.instance.$element().find('.dx-button').eq(0);
+    eventsEngine.trigger(firstButton, 'dxclick');
+    this.instance.option('startDate', new Date(2020, 2, 1, 1));
+
+    assert.equal(this.instance.option('value'), 'FREQ=WEEKLY;BYDAY=', 'value is correct');
+});
+
 QUnit.test('Recurrence repeat-on editor should contain repeat-on-month editor, when freq = monthly', function(assert) {
     this.createInstance({ value: 'FREQ=MONTHLY', startDate: new Date(2019, 1, 1) });
 
@@ -715,13 +742,13 @@ QUnit.test('Repeat-until dateBox should have right firstDayOfWeek after firstDay
     assert.equal(untilDate.option('calendarOptions.firstDayOfWeek'), 1, 'First day of the week is ok');
 });
 
+const dayNames = [{ key: 'SU', text: 'Sun' }, { key: 'MO', text: 'Mon' }, { key: 'TU', text: 'Tue' }, { key: 'WE', text: 'Wed' }, { key: 'TH', text: 'Thu' }, { key: 'FR', text: 'Fri' }, { key: 'SA', text: 'Sat' }];
+
 QUnit.test('Repeat-on-week editor should be rendered correctly', function(assert) {
     this.createInstance({ firstDayOfWeek: 3, value: 'FREQ=WEEKLY;BYDAY=TU' });
 
     const buttonGroup = $('.' + 'dx-buttongroup').eq(0).dxButtonGroup('instance');
-    assert.deepEqual(buttonGroup.option('items'), [
-        { text: 'WE' }, { text: 'TH' }, { text: 'FR' }, { text: 'SA' }, { text: 'SU' }, { text: 'MO' }, { text: 'TU' }
-    ]);
+    assert.deepEqual(buttonGroup.option('items'), dayNames.slice(3).concat(dayNames.slice(0, 3)));
 });
 
 QUnit.test('Repeat-on-week editor should be rendered correctly after firstDayOfWeek option changing', function(assert) {
@@ -729,9 +756,7 @@ QUnit.test('Repeat-on-week editor should be rendered correctly after firstDayOfW
     this.instance.option('firstDayOfWeek', 5);
 
     const buttonGroup = $('.' + 'dx-buttongroup').eq(0).dxButtonGroup('instance');
-    assert.deepEqual(buttonGroup.option('items'), [
-        { text: 'FR' }, { text: 'SA' }, { text: 'SU' }, { text: 'MO' }, { text: 'TU' }, { text: 'WE' }, { text: 'TH' }
-    ]);
+    assert.deepEqual(buttonGroup.option('items'), dayNames.slice(5).concat(dayNames.slice(0, 5)));
 });
 
 QUnit.test('Repeat-count editor should have correct value after re-initializing values', function(assert) {

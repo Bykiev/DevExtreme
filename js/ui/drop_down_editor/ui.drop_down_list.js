@@ -1,5 +1,5 @@
 const $ = require('../../core/renderer');
-const window = require('../../core/utils/window').getWindow();
+const windowUtils = require('../../core/utils/window');
 const eventsEngine = require('../../events/core/events_engine');
 const Guid = require('../../core/guid');
 const registerComponent = require('../../core/component_registrator');
@@ -19,6 +19,7 @@ const messageLocalization = require('../../localization/message');
 const ChildDefaultTemplate = require('../../core/templates/child_default_template').ChildDefaultTemplate;
 const Deferred = require('../../core/utils/deferred').Deferred;
 const DataConverterMixin = require('../shared/grouped_data_converter_mixin').default;
+const window = windowUtils.getWindow();
 
 const LIST_ITEM_SELECTOR = '.dx-list-item';
 const LIST_ITEM_DATA_KEY = 'dxListItemData';
@@ -162,6 +163,10 @@ const DropDownList = DropDownEditor.inherit({
         this._initItems();
     },
 
+    _setListFocusedElementOptionChange: function() {
+        this._list._updateParentActiveDescendant = this._updateActiveDescendant.bind(this);
+    },
+
     _initItems: function() {
         const items = this.option().items;
         if(items && !items.length && this._dataSource) {
@@ -196,6 +201,10 @@ const DropDownList = DropDownEditor.inherit({
         this._templateManager.addDefaultTemplates({
             item: new ChildDefaultTemplate('item')
         });
+    },
+
+    _isEditable: function() {
+        return this.callBase() || this.option('searchEnabled');
     },
 
     _saveFocusOnWidget: function(e) {
@@ -345,6 +354,17 @@ const DropDownList = DropDownEditor.inherit({
         return plainItems;
     },
 
+    _updateActiveDescendant() {
+        const opened = this.option('opened');
+        const listFocusedItemId = this._list?.getFocusedItemId();
+        const isElementOnDom = $(`#${listFocusedItemId}`).length > 0;
+        const activedescendant = opened && isElementOnDom && listFocusedItemId;
+
+        this.setAria({
+            'activedescendant': activedescendant || null
+        });
+    },
+
     _setSelectedItem: function(item) {
         const displayValue = this._displayValue(item);
         this.option('selectedItem', commonUtils.ensureDefined(item, null));
@@ -421,6 +441,7 @@ const DropDownList = DropDownEditor.inherit({
 
         this._clearFilter();
         this._clearSelectedItem();
+        this._preventFiltering = true;
     },
 
     _listItemElements: function() {
@@ -430,10 +451,8 @@ const DropDownList = DropDownEditor.inherit({
     _popupConfig: function() {
         return extend(this.callBase(), {
             templatesRenderAsynchronously: false,
-            width: this.option('width'),
-            height: 'auto',
             autoResizeEnabled: false,
-            maxHeight: this._getMaxHeight.bind(this)
+            maxHeight: this._getMaxHeight.bind(this),
         });
     },
 
@@ -447,8 +466,6 @@ const DropDownList = DropDownEditor.inherit({
 
         return this.callBase().concat([!canListHaveFocus && this._list]);
     },
-
-    _fireContentReadyAction: commonUtils.noop,
 
     _setAriaTargetForList: function() {
         this._list._getAriaTarget = this._getAriaTarget.bind(this);
@@ -467,6 +484,7 @@ const DropDownList = DropDownEditor.inherit({
         this._list.option('_listAttributes', { 'role': 'combobox' });
 
         this._renderPreventBlur(this._$list);
+        this._setListFocusedElementOptionChange();
     },
 
     _renderPreventBlur: function($target) {
@@ -481,13 +499,11 @@ const DropDownList = DropDownEditor.inherit({
     _renderOpenedState: function() {
         this.callBase();
 
-        const opened = this.option('opened') || undefined;
-
+        this._list && this._updateActiveDescendant();
         this.setAria({
-            'activedescendant': opened && this._list.getFocusedItemId(),
-            'controls': opened && this._listId
+            'controls': this._list && this._listId,
+            'owns': this._popup && this._popupContentId
         });
-
     },
 
     _setDefaultAria: function() {
@@ -505,6 +521,7 @@ const DropDownList = DropDownEditor.inherit({
 
     _shouldRefreshDataSource: function() {
         const dataSourceProvided = !!this._list.option('dataSource');
+
         return dataSourceProvided !== this._needPassDataSourceToList();
     },
 
@@ -528,6 +545,7 @@ const DropDownList = DropDownEditor.inherit({
             groupTemplate: this.option('groupTemplate'),
             onItemClick: this._listItemClickAction.bind(this),
             dataSource: this._getDataSource(),
+            _revertPageOnEmptyLoad: true,
             hoverStateEnabled: this._isDesktopDevice() ? this.option('hoverStateEnabled') : false,
             focusStateEnabled: this._isDesktopDevice() ? this.option('focusStateEnabled') : false
         };
@@ -745,16 +763,9 @@ const DropDownList = DropDownEditor.inherit({
     },
 
     _dimensionChanged: function() {
+        this.callBase(arguments);
+
         this._popup && this._updatePopupDimensions();
-    },
-
-    _updatePopupDimensions: function() {
-        this._updatePopupWidth();
-        this._updatePopupHeight();
-    },
-
-    _updatePopupWidth: function() {
-        this._setPopupOption('width', this.$element().outerWidth() + this.option('popupWidthExtension'));
     },
 
     _needPopupRepaint: function() {
@@ -770,7 +781,7 @@ const DropDownList = DropDownEditor.inherit({
         return needRepaint;
     },
 
-    _updatePopupHeight: function() {
+    _updatePopupDimensions: function() {
         if(this._needPopupRepaint()) {
             this._popup.repaint();
         }

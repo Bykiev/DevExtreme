@@ -358,6 +358,9 @@ const Pager = Widget.inherit({
             max: pageCount,
             width: that._calculateLightPagesWidth($pageIndex, pageCount),
             onValueChanged: function(e) {
+                if(e.value === null) {
+                    return;
+                }
                 that.option('pageIndex', e.value);
             }
         });
@@ -724,13 +727,13 @@ const Pager = Widget.inherit({
 
         commonUtils.deferRender(function() {
             if(that._isInfoHide && width > that._getMinPagerWidth() + infoWidth) {
-                that._$info.show();
+                that._$info.css('display', '');
                 that._updatePagesChooserWidth();
                 that._isInfoHide = false;
             }
 
             if(!that._isInfoHide && width > that._getMinPagerWidth() - infoWidth && width < that._getMinPagerWidth()) {
-                that._$info.hide();
+                that._$info.css('display', 'none');
                 that._updatePagesChooserWidth();
                 that._isInfoHide = true;
             }

@@ -1,5 +1,6 @@
 import Component from '../../core/component';
 import DataHelperMixin from '../../data_helper';
+import { extend } from '../../core/utils/extend';
 
 class ItemsOption extends Component {
     constructor(diagramWidget) {
@@ -9,7 +10,8 @@ class ItemsOption extends Component {
     }
 
     _dataSourceChangedHandler(newItems, e) {
-        this._items = newItems;
+        this._resetCache();
+        this._items = newItems.map(item => extend({}, item));
         this._diagramWidget._onDataSourceChanged();
     }
     _dataSourceLoadingChangedHandler(isLoading) {
@@ -19,9 +21,20 @@ class ItemsOption extends Component {
             this._diagramWidget._hideLoadingIndicator();
         }
     }
+    _prepareData(dataObj) {
+        for(const key in dataObj) {
+            if(!Object.prototype.hasOwnProperty.call(dataObj, key)) continue;
+
+            if(dataObj[key] === undefined) {
+                dataObj[key] = null;
+            }
+        }
+        return dataObj;
+    }
+
     insert(data, callback, errorCallback) {
         this._resetCache();
-        this._getStore().insert(data).done(
+        this._getStore().insert(this._prepareData(data)).done(
             (data) => {
                 if(callback) {
                     callback(data);
@@ -39,14 +52,14 @@ class ItemsOption extends Component {
     }
     update(key, data, callback, errorCallback) {
         const storeKey = this._getStoreKey(data);
-        this._getStore().update(storeKey, data).done(
-            function(data, key) {
+        this._getStore().update(storeKey, this._prepareData(data)).done(
+            (data, key) => {
                 if(callback) {
                     callback(key, data);
                 }
             }
         ).fail(
-            function(error) {
+            (error) => {
                 if(errorCallback) {
                     errorCallback(error);
                 }
@@ -76,8 +89,7 @@ class ItemsOption extends Component {
         if(!this._items) {
             return null;
         }
-        const index = this._getIndexByKey(itemKey);
-        return this._items[index];
+        return this._getItemByKey(itemKey);
     }
     getItems() {
         return this._items;
@@ -86,40 +98,67 @@ class ItemsOption extends Component {
         return !!this._items;
     }
 
-    _getIndexByKey(key) {
-        const cache = this._cache;
-        const keys = cache.keys || this._getKeys() || [];
-        if(!cache.keys) {
-            cache.keys = keys;
-        }
+    _getItemByKey(key) {
+        this._ensureCache();
 
+        const cache = this._cache;
+        const index = this._getIndexByKey(key);
+        return cache.items[index];
+    }
+    _getIndexByKey(key) {
+        this._ensureCache();
+
+        const cache = this._cache;
         if(typeof key === 'object') {
-            for(let i = 0, length = keys.length; i < length; i++) {
-                if(keys[i] === key) return i;
+            for(let i = 0, length = cache.keys.length; i < length; i++) {
+                if(cache.keys[i] === key) return i;
             }
         } else {
-            const set = cache.set || keys.reduce((accumulator, key, index) => {
+            const keySet = cache.keySet || cache.keys.reduce((accumulator, key, index) => {
                 accumulator[key] = index;
                 return accumulator;
             }, {});
-            if(!cache.set) {
-                cache.set = set;
+            if(!cache.keySet) {
+                cache.keySet = keySet;
             }
-            return set[key];
+            return keySet[key];
         }
         return -1;
     }
-
-    _getKeys() {
-        if(!this._items) {
-            return [];
+    _ensureCache() {
+        const cache = this._cache;
+        if(!cache.keys) {
+            cache.keys = [];
+            cache.items = [];
+            this._fillCache(cache, this._items);
         }
+    }
+    _fillCache(cache, items) {
+        if(!items || !items.length) return;
+
         const keyExpr = this._getKeyExpr();
-        return keyExpr && this._items && this._items.map(item => keyExpr(item));
+        if(keyExpr) {
+            items.forEach(item => {
+                cache.keys.push(keyExpr(item));
+                cache.items.push(item);
+            });
+        }
+        const itemsExpr = this._getItemsExpr();
+        if(itemsExpr) {
+            items.forEach(item => this._fillCache(cache, itemsExpr(item)));
+        }
+        const containerChildrenExpr = this._getContainerChildrenExpr();
+        if(containerChildrenExpr) {
+            items.forEach(item => this._fillCache(cache, containerChildrenExpr(item)));
+        }
     }
 
     _getKeyExpr() {
         throw 'Not Implemented';
+    }
+    _getItemsExpr() {
+    }
+    _getContainerChildrenExpr() {
     }
 
     _dataSourceOptions() {

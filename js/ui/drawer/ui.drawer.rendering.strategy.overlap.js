@@ -4,10 +4,7 @@ import $ from '../../core/renderer';
 import translator from '../../animation/translator';
 import Overlay from '../overlay';
 import { ensureDefined } from '../../core/utils/common';
-import { extend } from '../../core/utils/extend';
-import { isDefined } from '../../core/utils/type';
 import { camelize } from '../../core/utils/inflector';
-import * as zIndexPool from '../overlay/z_index';
 
 class OverlapStrategy extends DrawerStrategy {
 
@@ -33,9 +30,9 @@ class OverlapStrategy extends DrawerStrategy {
                 this._fixOverlayPosition(e.component.$content());
             }).bind(this),
             contentTemplate: drawer.option('template'),
-            onContentReady: () => {
+            onContentReady: (args) => {
                 whenPanelContentRendered.resolve();
-                drawer.updateZIndex(opened);
+                this._processOverlayZIndex(args.component.content());
             },
             visible: true,
             propagateOutsideClick: true
@@ -49,6 +46,10 @@ class OverlapStrategy extends DrawerStrategy {
 
         if(this.getDrawerInstance().calcTargetPosition() === 'right') {
             $overlayContent.css('left', 'auto');
+        }
+        if(this.getDrawerInstance().calcTargetPosition() === 'bottom') {
+            $overlayContent.css('top', 'auto');
+            $overlayContent.css('bottom', '0px');
         }
     }
 
@@ -101,106 +102,91 @@ class OverlapStrategy extends DrawerStrategy {
         }
     }
 
-    _setupContent($content, position) {
-        $content.css('padding' + camelize(position, true), this.getDrawerInstance().option('minSize'));
-        $content.css('transform', 'inherit');
+    onPanelContentRendered() {
+        this._updateViewContentStyles();
     }
 
-    _slidePositionRendering(config, _, animate) {
+    _updateViewContentStyles() {
         const drawer = this.getDrawerInstance();
+        $(drawer.viewContent()).css('padding' + camelize(drawer.calcTargetPosition(), true), drawer.option('minSize'));
+        $(drawer.viewContent()).css('transform', 'inherit');
+    }
 
-        this._initialPosition = drawer.isHorizontalDirection() ? { left: config.panelOffset } : { top: config.panelOffset };
-        const position = drawer.calcTargetPosition();
+    _internalRenderPosition(changePositionUsingFxAnimation, whenAnimationCompleted) {
+        const drawer = this.getDrawerInstance();
+        const $panel = $(drawer.content());
+        const $panelOverlayContent = drawer.getOverlay().$content();
+        const revealMode = drawer.option('revealMode');
+        const targetPanelPosition = drawer.calcTargetPosition();
 
-        this._setupContent(config.$content, position, config.drawer);
+        const panelSize = this._getPanelSize(drawer.option('opened'));
+        const panelOffset = this._getPanelOffset(drawer.option('opened')) * drawer._getPositionCorrection();
+        const marginTop = drawer.getRealPanelHeight() - panelSize;
 
-        if(animate) {
-            const animationConfig = extend(config.defaultAnimationConfig, {
-                $element: config.$panel,
-                position: config.panelOffset,
-                duration: drawer.option('animationDuration'),
-                direction: position,
-            });
+        this._updateViewContentStyles();
 
-            animation.moveTo(animationConfig);
-        } else {
-            if(drawer.isHorizontalDirection()) {
-                translator.move(config.$panel, { left: config.panelOffset });
-            } else {
-                translator.move(config.$panel, { top: config.panelOffset });
+        if(changePositionUsingFxAnimation) {
+            if(revealMode === 'slide') {
+                this._initialPosition = drawer.isHorizontalDirection() ? { left: panelOffset } : { top: panelOffset };
+
+                animation.moveTo({
+                    complete: () => {
+                        whenAnimationCompleted.resolve();
+                    },
+                    duration: drawer.option('animationDuration'),
+                    direction: targetPanelPosition,
+                    $element: $panel,
+                    position: panelOffset
+                });
+            } else if(revealMode === 'expand') {
+                this._initialPosition = { left: 0 };
+                translator.move($panelOverlayContent, this._initialPosition);
+
+                animation.size({
+                    complete: () => {
+                        whenAnimationCompleted.resolve();
+                    },
+                    duration: drawer.option('animationDuration'),
+                    direction: targetPanelPosition,
+                    $element: $panelOverlayContent,
+                    size: panelSize,
+                    marginTop: marginTop
+                });
             }
-        }
-    }
-
-    _expandPositionRendering(config, _, animate) {
-        const drawer = this.getDrawerInstance();
-
-        this._initialPosition = { left: 0 };
-        const position = drawer.calcTargetPosition();
-
-        this._setupContent(config.$content, position);
-
-        translator.move(config.$panelOverlayContent, { left: 0 });
-
-        if(animate) {
-            const animationConfig = extend(config.defaultAnimationConfig, {
-                $element: config.$panelOverlayContent,
-                size: config.size,
-                duration: drawer.option('animationDuration'),
-                direction: position,
-                marginTop: config.marginTop,
-            });
-
-            animation.size(animationConfig);
         } else {
-            if(drawer.isHorizontalDirection()) {
-                $(config.$panelOverlayContent).css('width', config.size);
-            } else {
-                $(config.$panelOverlayContent).css('height', config.size);
+            if(revealMode === 'slide') {
+                this._initialPosition = drawer.isHorizontalDirection() ? { left: panelOffset } : { top: panelOffset };
+                translator.move($panel, this._initialPosition);
+            } else if(revealMode === 'expand') {
+                this._initialPosition = { left: 0 };
+                translator.move($panelOverlayContent, this._initialPosition);
 
-                if(position === 'bottom') {
-                    $(config.$panelOverlayContent).css('marginTop', config.marginTop);
+                if(drawer.isHorizontalDirection()) {
+                    $($panelOverlayContent).css('width', panelSize);
+                } else {
+                    $($panelOverlayContent).css('height', panelSize);
+
+                    if(targetPanelPosition === 'bottom') {
+                        $($panelOverlayContent).css('marginTop', marginTop);
+                    }
                 }
             }
         }
-    }
-
-    _getPositionRenderingConfig(isDrawerOpened) {
-        const drawer = this.getDrawerInstance();
-        const config = super._getPositionRenderingConfig(isDrawerOpened);
-
-        return extend(config, {
-            panelOffset: this._getPanelOffset(isDrawerOpened) * this.getDrawerInstance()._getPositionCorrection(),
-            $panelOverlayContent: drawer.getOverlay().$content(),
-            marginTop: drawer.getRealPanelHeight() - config.size
-        });
     }
 
     getPanelContent() {
         return $(this.getDrawerInstance().getOverlay().content());
     }
 
+    _processOverlayZIndex($element) {
+        const styles = $($element).get(0).style;
+        const zIndex = styles.zIndex || 1;
+
+        this.getDrawerInstance().setZIndex(zIndex);
+    }
+
     isViewContentFirst(position) {
         return position === 'right' || position === 'bottom';
-    }
-
-    updateZIndex() {
-        super.updateZIndex();
-
-        if(!isDefined(this._panelZIndex)) {
-            this._panelZIndex = zIndexPool.base() + 501;
-            this._drawer._$panelContentWrapper.css('zIndex', this._panelZIndex);
-        }
-
-    }
-
-    clearZIndex() {
-        if(isDefined(this._panelZIndex)) {
-            this._drawer._$panelContentWrapper.css('zIndex', '');
-            delete this._panelZIndex;
-        }
-
-        super.clearZIndex();
     }
 }
 

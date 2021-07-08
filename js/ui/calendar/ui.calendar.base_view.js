@@ -40,7 +40,8 @@ const BaseView = Widget.inherit({
             onCellClick: null,
             rowCount: 3,
             colCount: 4,
-            allowValueSelection: true
+            allowValueSelection: true,
+            _todayDate: () => new Date()
         });
     },
 
@@ -250,11 +251,15 @@ const BaseView = Widget.inherit({
 
         contouredDate = contouredDate || this.option('contouredDate');
 
-        const $oldContouredCell = this._$table.find(`.${CALENDAR_CONTOURED_DATE_CLASS}`);
+        const $oldContouredCell = this._getContouredCell();
         const $newContouredCell = this._getCellByDate(contouredDate);
 
         $oldContouredCell.removeClass(CALENDAR_CONTOURED_DATE_CLASS);
         $newContouredCell.addClass(CALENDAR_CONTOURED_DATE_CLASS);
+    },
+
+    _getContouredCell: function() {
+        return this._$table.find(`.${CALENDAR_CONTOURED_DATE_CLASS}`);
     },
 
     _changeValue: function(cellDate) {
@@ -324,6 +329,9 @@ const BaseView = Widget.inherit({
             case 'rtlEnabled':
                 this._cacheAppendMethodName(value);
                 this.callBase(args);
+                break;
+            case '_todayDate':
+                this._renderBody();
                 break;
             default:
                 this.callBase(args);

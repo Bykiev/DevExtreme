@@ -13,12 +13,12 @@ import {
 import { type } from '../core/utils/type';
 import { getPrecision } from '../core/utils/math';
 import { overlapping } from './chart_components/base_chart';
-import LayoutManagerModule from './chart_components/layout_manager';
 import multiAxesSynchronizer from './chart_components/multi_axes_synchronizer';
 import { AdvancedChart } from './chart_components/advanced_chart';
 import scrollBarModule from './chart_components/scroll_bar';
 import crosshairModule from './chart_components/crosshair';
 import { getViewPortFilter } from './series/helpers/range_data_calculator';
+import LayoutManagerModule from './chart_components/layout_manager';
 import rangeModule from './translators/range';
 const DEFAULT_PANE_NAME = 'default';
 const VISUAL_RANGE = 'VISUAL_RANGE';
@@ -382,7 +382,7 @@ function axisAnimationEnabled(drawOptions, pointsToAnimation) {
 }
 
 function collectMarkersInfoBySeries(allSeries, filteredSeries, argAxis) {
-    let points = [];
+    const series = [];
     const overloadedSeries = {};
     const argVisualRange = argAxis.visualRange();
     const argTranslator = argAxis.getTranslator();
@@ -403,7 +403,7 @@ function collectMarkersInfoBySeries(allSeries, filteredSeries, argAxis) {
             (valViewPortFilter(p.getMinValue(true)) || valViewPortFilter(p.getMaxValue(true)));
         }).forEach(p => {
             const tp = {
-                seriesIndex: seriesIndex,
+                seriesIndex,
                 argument: p.argument,
                 value: p.getMaxValue(true),
                 size: p.bubbleSize || p.getOptions().size
@@ -423,9 +423,9 @@ function collectMarkersInfoBySeries(allSeries, filteredSeries, argAxis) {
         overloadedSeries[seriesIndex].pointsCount = seriesPoints.length;
         overloadedSeries[seriesIndex].total = 0;
         overloadedSeries[seriesIndex].continuousSeries = 0;
-        points = points.concat(seriesPoints);
+        series.push({ name: s.name, index: seriesIndex, points: seriesPoints });
     });
-    return { points, overloadedSeries };
+    return { series, overloadedSeries };
 }
 
 function applyAutoHidePointMarkers(allSeries, filteredSeries, overloadedSeries, argAxis) {
@@ -454,7 +454,26 @@ function applyAutoHidePointMarkers(allSeries, filteredSeries, overloadedSeries, 
     });
 }
 
-function updateMarkersInfo({ overloadedSeries, points }) {
+function fastHidingPointMarkersByArea(canvas, markersInfo, series) {
+    const area = canvas.width * canvas.height;
+    const seriesPoints = markersInfo.series;
+
+    for(let i = seriesPoints.length - 1; i >= 0; i--) {
+        const currentSeries = series.filter(s => s.name === seriesPoints[i].name)[0];
+        const points = seriesPoints[i].points;
+        const pointSize = points.length ? points[0].size : 0;
+        const pointsArea = pointSize * pointSize * points.length;
+        if(currentSeries.autoHidePointMarkersEnabled() && pointsArea >= area / seriesPoints.length) {
+            const index = seriesPoints[i].index;
+            currentSeries.autoHidePointMarkers = true;
+            seriesPoints.splice(i, 1);
+            series.splice(series.indexOf(currentSeries), 1);
+            delete markersInfo.overloadedSeries[index];
+        }
+    }
+}
+
+function updateMarkersInfo(points, overloadedSeries) {
     let isContinuousSeries = false;
     for(let i = 0; i < points.length - 1; i++) {
         const curPoint = points[i];
@@ -575,26 +594,30 @@ const dxChart = AdvancedChart.inherit({
         const valueAxis = that._valueAxes.filter(v => v.pane === argumentAxis.pane && (!valueAxisName || valueAxisName === v.name))[0];
 
         that._valueAxes.forEach(v => {
-            if(argumentAxis !== v.getCustomPositionAxis()) {
-                v.getCustomPositionAxis = () => {
+            if(argumentAxis !== v.getOrthogonalAxis()) {
+                v.getOrthogonalAxis = () => {
                     return argumentAxis;
                 };
-                v.customPositionIsBoundaryOppositeAxis = () => {
+                v.customPositionIsBoundaryOrthogonalAxis = () => {
                     return argumentAxis.customPositionIsBoundary();
                 };
             }
         });
 
-        if(_isDefined(valueAxis) && valueAxis !== argumentAxis.getCustomPositionAxis()) {
-            argumentAxis.getCustomPositionAxis = () => {
+        if(_isDefined(valueAxis) && valueAxis !== argumentAxis.getOrthogonalAxis()) {
+            argumentAxis.getOrthogonalAxis = () => {
                 return valueAxis;
             };
-            argumentAxis.customPositionIsBoundaryOppositeAxis = () => {
+            argumentAxis.customPositionIsBoundaryOrthogonalAxis = () => {
                 return that._valueAxes.some(v => v.customPositionIsBoundary());
             };
-        } else if(_isDefined(argumentAxis.getCustomPositionAxis()) && !_isDefined(valueAxis)) {
-            argumentAxis.getCustomPositionAxis = noop;
+        } else if(_isDefined(argumentAxis.getOrthogonalAxis()) && !_isDefined(valueAxis)) {
+            argumentAxis.getOrthogonalAxis = noop;
         }
+    },
+
+    _resetAxesAnimation(isFirstDrawing) {
+        this._argumentAxes.concat(this._valueAxes).forEach(a => { a.resetApplyingAnimation(isFirstDrawing); });
     },
 
     _axesBoundaryPositioning() {
@@ -857,13 +880,9 @@ const dxChart = AdvancedChart.inherit({
 
             newCanvas.right = panes[panes.length - 1].canvas.right;
             newCanvas.bottom = panes[panes.length - 1].canvas.bottom;
-            layoutManager.setOptions({ width: 0, height: 0 });
-            layoutManager.layoutElements(
-                [that._legend],
-                newCanvas,
-                noop,
-                [{ canvas: newCanvas }],
-                undefined
+            layoutManager.layoutInsideLegend(
+                that._legend,
+                newCanvas
             );
         }
     },
@@ -905,26 +924,32 @@ const dxChart = AdvancedChart.inherit({
     _applyPointMarkersAutoHiding() {
         const that = this;
         const allSeries = that.series;
+
         if(!that._themeManager.getOptions('autoHidePointMarkers')) {
             allSeries.forEach(s => s.autoHidePointMarkers = false);
             return;
         }
 
-        that.panes.forEach(({ name }) => {
+        that.panes.forEach(({ borderCoords, name }) => {
             const series = allSeries.filter(s => s.pane === name && s.usePointsToDefineAutoHiding());
             const argAxis = that.getArgumentAxis();
-            const argVisualRange = argAxis.visualRange();
-            const argAxisIsDiscrete = argAxis.getOptions().type === DISCRETE;
-
             const markersInfo = collectMarkersInfoBySeries(allSeries, series, argAxis);
+            fastHidingPointMarkersByArea(borderCoords, markersInfo, series);
 
-            const sortingCallback = argAxisIsDiscrete ?
-                (p1, p2) => argVisualRange.categories.indexOf(p1.argument) - argVisualRange.categories.indexOf(p2.argument) :
-                (p1, p2) => p1.argument - p2.argument;
-            markersInfo.points.sort(sortingCallback);
+            if(markersInfo.series.length) {
+                const argVisualRange = argAxis.visualRange();
+                const argAxisIsDiscrete = argAxis.getOptions().type === DISCRETE;
+                const sortingCallback = argAxisIsDiscrete ?
+                    (p1, p2) => argVisualRange.categories.indexOf(p1.argument) - argVisualRange.categories.indexOf(p2.argument) :
+                    (p1, p2) => p1.argument - p2.argument;
+                let points = [];
 
-            updateMarkersInfo(markersInfo);
-            applyAutoHidePointMarkers(allSeries, series, markersInfo.overloadedSeries, argAxis);
+                markersInfo.series.forEach(s => points = points.concat(s.points));
+                points.sort(sortingCallback);
+
+                updateMarkersInfo(points, markersInfo.overloadedSeries);
+                applyAutoHidePointMarkers(allSeries, series, markersInfo.overloadedSeries, argAxis);
+            }
         });
     },
 
@@ -973,6 +998,8 @@ const dxChart = AdvancedChart.inherit({
             drawAxesWithTicks(horizontalAxes, rotated && synchronizeMultiAxes, panesCanvases, panesBorderOptions);
             performActionOnAxes(allAxes, 'prepareAnimation');
             that._renderScaleBreaks();
+            horizontalAxes.forEach(a => a.resolveOverlappingForCustomPositioning(verticalAxes));
+            verticalAxes.forEach(a => a.resolveOverlappingForCustomPositioning(horizontalAxes));
             return false;
         }
         if(needCustomAdjustAxes) {
@@ -1045,8 +1072,11 @@ const dxChart = AdvancedChart.inherit({
         });
 
         if(verticalAxes.some(v => v.customPositionIsAvailable() && v.getCustomPosition() !== v._axisPosition)) {
-            performActionOnAxes(verticalAxes, 'updateSize', panesCanvases, axisAnimationEnabled(drawOptions, pointsToAnimation));
+            performActionOnAxes(verticalAxes, 'updateSize', panesCanvases, false);
         }
+
+        horizontalAxes.forEach(a => a.resolveOverlappingForCustomPositioning(verticalAxes));
+        verticalAxes.forEach(a => a.resolveOverlappingForCustomPositioning(horizontalAxes));
 
         return cleanPanesCanvases;
     },

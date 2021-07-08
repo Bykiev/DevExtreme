@@ -5,6 +5,7 @@ import dataUtils from 'core/element_data';
 import config from 'core/config';
 import browser from 'core/utils/browser';
 import { isRenderer } from 'core/utils/type';
+import { normalizeKeyName } from 'events/utils/index';
 
 import ArrayStore from 'data/array_store';
 import CustomStore from 'data/custom_store';
@@ -29,30 +30,30 @@ import 'generic_light.css!';
 QUnit.testStart(function() {
     const markup =
         '<div id="lookup"></div>\
-            <div id="secondLookup"></div>\
-            <div id="thirdLookup"></div>\
-            <div id="fourthLookup">\
-                <div data-options="dxTemplate: { name: \'test\' }">\
-                    <span data-bind="text: $data.id"></span>- <span data-bind="text: $data.caption"></span>\
-                </div>\
+        <div id="secondLookup"></div>\
+        <div id="thirdLookup"></div>\
+        <div id="fourthLookup">\
+            <div data-options="dxTemplate: { name: \'test\' }">\
+                <span data-bind="text: $data.id"></span>- <span data-bind="text: $data.caption"></span>\
             </div>\
-            <div id="widget"></div>\
-            <div id="widthRootStyle" style="width: 300px;"></div>\
-            <div id="lookupOptions">\
-                <div data-options="dxTemplate: { name: \'customTitle\' }">testTitle</div>\
-                <div data-options="dxTemplate: { name: \'testGroupTemplate\' }">testGroupTemplate</div>\
+        </div>\
+        <div id="widget"></div>\
+        <div id="widthRootStyle" style="width: 300px;"></div>\
+        <div id="lookupOptions">\
+            <div data-options="dxTemplate: { name: \'customTitle\' }">testTitle</div>\
+            <div data-options="dxTemplate: { name: \'testGroupTemplate\' }">testGroupTemplate</div>\
+        </div>\
+        \
+        <div id="lookupFieldTemplate">\
+            <div data-options="dxTemplate: { name: \'field\' }">\
+                <span>test</span>\
             </div>\
-            \
-            <div id="lookupFieldTemplate">\
-                <div data-options="dxTemplate: { name: \'field\' }">\
-                    <span>test</span>\
-                </div>\
+        </div>\
+        \
+        <div id="lookupWithFieldTemplate">\
+            <div data-options="dxTemplate: {name: \'field\'}">\
             </div>\
-            \
-            <div id="lookupWithFieldTemplate">\
-                <div data-options="dxTemplate: {name: \'field\'}">\
-                </div>\
-            </div>';
+        </div>';
 
     $('#qunit-fixture').html(markup);
 });
@@ -65,14 +66,19 @@ const POPUP_TITLE_CLASS = 'dx-popup-title';
 const POPUP_CONTENT_CLASS = 'dx-popup-content';
 
 const LIST_CLASS = 'dx-list';
+const LIST_ITEM_CLASS = 'dx-list-item';
 const LIST_ITEM_SELECTED_CLASS = 'dx-list-item-selected';
 const LIST_GROUP_HEADER_CLASS = 'dx-list-group-header';
 
 const LOOKUP_SEARCH_CLASS = 'dx-lookup-search';
 const LOOKUP_SEARCH_WRAPPER_CLASS = 'dx-lookup-search-wrapper';
 const LOOKUP_FIELD_CLASS = 'dx-lookup-field';
+const CLEAR_BUTTON_CLASS = 'dx-popup-clear';
+const APPLY_BUTTON_CLASS = 'dx-popup-done';
 
 const TEXTEDITOR_INPUT_CLASS = 'dx-texteditor-input';
+
+const SCROLL_VIEW_LOAD_PANEL_CLASS = 'dx-scrollview-loadpanel';
 
 const FOCUSED_CLASS = 'dx-state-focused';
 
@@ -84,6 +90,10 @@ const openPopupWithList = function(lookup) {
     $(lookup._$field).trigger('dxclick');
 };
 
+const getList = function() {
+    return $('.dx-list').dxList('instance');
+};
+
 QUnit.module('Lookup', {
     beforeEach: function() {
         fx.off = true;
@@ -91,7 +101,7 @@ QUnit.module('Lookup', {
         this.clock = sinon.useFakeTimers();
 
         this.element = $('#lookup');
-        this.instance = this.element.dxLookup({ fullScreen: false }).dxLookup('instance');
+        this.instance = this.element.dxLookup({ 'dropDownOptions.fullScreen': false }).dxLookup('instance');
         this.$field = $(this.instance._$field);
 
         this.togglePopup = function() {
@@ -216,54 +226,13 @@ QUnit.module('Lookup', {
     });
 
     QUnit.test('List is empty until popup is open', function(assert) {
-        const lookup = this.element
+        this.element
             .dxLookup({
                 dataSource: [1, 2, 3]
             })
             .dxLookup('instance');
 
-        assert.strictEqual(lookup._list, undefined, 'List dataSource');
-    });
-
-    QUnit.test('onContentReady', function(assert) {
-        let count = 0;
-        const load = $.Deferred();
-        const items = [1, 2, 3];
-
-        const instance = $('#thirdLookup').dxLookup({
-            onContentReady: function() { count++; },
-            dataSource: {
-                load: function() {
-                    return load.promise();
-                }
-            },
-            deferRendering: false,
-            searchTimeout: 0,
-            animation: {},
-            cleanSearchOnOpening: false
-        }).dxLookup('instance');
-        count = 0;
-
-        instance.open();
-        assert.equal(count, 0, 'onContentReady fired after rendering');
-
-        load.resolve(items);
-        assert.equal(count, 1, 'onContentReady fired after dataSource load');
-
-        instance.close();
-        instance.open();
-
-        assert.equal(count, 1, 'onContentReady does not fired after second show popup');
-
-        instance._searchBox.option('value', '2');
-
-        assert.equal(count, 2, 'onContentReady fired after search something');
-
-        instance.close();
-        assert.equal(count, 2, 'onContentReady does not fired after hide popup with search results');
-
-        instance.open();
-        assert.equal(count, 2, 'onContentReady does not fired after show popup with search results');
+        assert.strictEqual(getList(), undefined, 'List dataSource');
     });
 
     QUnit.test('search value should be cleared after popup close for better UX (T253304)', function(assert) {
@@ -273,7 +242,7 @@ QUnit.module('Lookup', {
             dataSource: [1, 2, 3],
             deferRendering: false,
             searchTimeout: searchTimeout,
-            animation: null,
+            'dropDownOptions.animation': null,
             cleanSearchOnOpening: true,
             opened: true
         }).dxLookup('instance');
@@ -282,7 +251,7 @@ QUnit.module('Lookup', {
         this.clock.tick(searchTimeout);
         instance.close();
         instance.open();
-        assert.equal(instance._list.option('items').length, 3, 'filter reset immediately');
+        assert.equal(getList().option('items').length, 3, 'filter reset immediately');
     });
 
     QUnit.test('search value should be cleared without excess dataSource filtering ', function(assert) {
@@ -296,7 +265,7 @@ QUnit.module('Lookup', {
                 }
             }),
             searchTimeout: searchTimeout,
-            animation: null,
+            'dropDownOptions.animation': null,
             cleanSearchOnOpening: true,
             opened: true
         }).dxLookup('instance');
@@ -318,7 +287,7 @@ QUnit.module('Lookup', {
             .dxLookup({
                 items: [111, 222, 333],
                 searchTimeout: 0,
-                animation: {},
+                'dropDownOptions.animation': {},
                 minSearchLength: 2,
                 onContentReady: function() { count++; }
             }).dxLookup('instance');
@@ -356,7 +325,8 @@ QUnit.module('Lookup', {
 
         this.togglePopup();
 
-        const $firstItem = $(lookup._list.$element().find('.dx-list-item')[0]); const $secondItem = $(lookup._list.$element().find('.dx-list-item')[1]);
+        const $firstItem = $(getList().$element().find('.dx-list-item')[0]);
+        const $secondItem = $(getList().$element().find('.dx-list-item')[1]);
 
         assert.ok($secondItem.hasClass(LIST_ITEM_SELECTED_CLASS), 'class selected was added');
 
@@ -385,7 +355,7 @@ QUnit.module('Lookup', {
 
         this.togglePopup();
 
-        const $firstItem = $(lookup._list.$element().find('.dx-list-item')[0]);
+        const $firstItem = $(getList().$element().find('.dx-list-item')[0]);
         assert.equal($firstItem.text(), 'one', 'displayExpr work in list items');
 
         lookup.option('value', 1);
@@ -394,7 +364,7 @@ QUnit.module('Lookup', {
 
         this.togglePopup();
 
-        const $secondItem = $(lookup._list.$element().find('.dx-list-item')[1]);
+        const $secondItem = $(getList().$element().find('.dx-list-item')[1]);
         $($secondItem).trigger('dxclick');
         assert.equal(lookup.option('value'), 2);
         assert.equal(this.$field.text(), 'two', 'display field work in text');
@@ -938,7 +908,7 @@ QUnit.module('Lookup', {
 
         assert.ok(fourthLookup._getTemplateByOption('itemTemplate'), 'test template present in lookup');
         openPopupWithList(fourthLookup);
-        assert.strictEqual(fourthLookup._getTemplateByOption('itemTemplate'), fourthLookup._list._getTemplateByOption('itemTemplate'), 'test template present in list');
+        assert.strictEqual(fourthLookup._getTemplateByOption('itemTemplate'), getList()._getTemplateByOption('itemTemplate'), 'test template present in list');
     });
 
     QUnit.test('itemTemplate returning string', function(assert) {
@@ -950,7 +920,7 @@ QUnit.module('Lookup', {
         }).dxLookup('instance');
 
         openPopupWithList(lookup);
-        let items = $('.dx-list-item', lookup._list.$element());
+        let items = $('.dx-list-item', getList().$element());
 
         assert.equal(items.eq(0).text(), '0: a');
         assert.equal(items.eq(1).text(), '1: b');
@@ -959,7 +929,7 @@ QUnit.module('Lookup', {
             return item + ': ' + index;
         });
 
-        items = $('.dx-list-item', lookup._list.$element());
+        items = $('.dx-list-item', getList().$element());
 
         assert.equal(items.eq(0).text(), 'a: 0');
         assert.equal(items.eq(1).text(), 'b: 1');
@@ -974,7 +944,7 @@ QUnit.module('Lookup', {
         }).dxLookup('instance');
 
         openPopupWithList(lookup);
-        const item = $('.dx-list-item', lookup._list.$element()).eq(0);
+        const item = $('.dx-list-item', getList().$element()).eq(0);
         assert.ok(item.find('span.test').length);
     });
 
@@ -994,7 +964,7 @@ QUnit.module('Lookup', {
         assert.ok($list.find('.dx-list-item').eq(1).hasClass(LIST_ITEM_SELECTED_CLASS), 'second item selected');
         assert.equal(lookup.option('value'), 1, 'value dont changed without Done click');
 
-        $(lookup._popup._wrapper()).find('.dx-popup-done.dx-button').eq(0).trigger('dxclick');
+        $(lookup._popup._wrapper()).find(`.${APPLY_BUTTON_CLASS}.dx-button`).eq(0).trigger('dxclick');
 
         assert.ok(!lookup.option('opened'), 'popup hide after click by Done');
         assert.equal(lookup.option('value'), 2, 'value changed after Done click');
@@ -1007,7 +977,8 @@ QUnit.module('Lookup', {
 
         openPopupWithList(lookup);
 
-        const $firstListItem = $(lookup._list.$element().find('.dx-list-item').eq(0)); const mouse = pointerMock($firstListItem).start();
+        const $firstListItem = $(getList().$element().find('.dx-list-item').eq(0));
+        const mouse = pointerMock($firstListItem).start();
 
         mouse.down().move(0, 10).up();
         this.clock.tick(500);
@@ -1031,7 +1002,8 @@ QUnit.module('Lookup', {
         openPopupWithList(firstLookup);
         assert.equal($('.' + LIST_ITEM_SELECTED_CLASS).length, 1);
 
-        const $firstListItem = $(firstLookup._list.$element().find('.dx-list-item').eq(0)); const mouse = pointerMock($firstListItem);
+        const $firstListItem = $(getList().$element().find('.dx-list-item').eq(0));
+        const mouse = pointerMock($firstListItem);
         mouse.start().down().move(0, 10).up();
 
         openPopupWithList(secondLookup);
@@ -1112,7 +1084,7 @@ QUnit.module('Lookup', {
         const popupHeight = 500;
         this.instance.option({
             usePopover: true,
-            popupHeight: popupHeight
+            'dropDownOptions.height': popupHeight
         });
 
         this.togglePopup();
@@ -1144,33 +1116,13 @@ QUnit.module('Lookup', {
 
         this.togglePopup();
 
-        $($('.dx-list-item', lookup._list.$element()).eq(1)).trigger('dxclick');
+        $($('.dx-list-item', getList().$element()).eq(1)).trigger('dxclick');
         $('.dx-popup-cancel.dx-button', $(lookup._popup._wrapper())).eq(0).trigger('dxclick');
         $(lookup._$field).trigger('dxclick');
-        $($('.dx-list-item', lookup._list.$element()).eq(1)).trigger('dxclick');
+        $($('.dx-list-item', getList().$element()).eq(1)).trigger('dxclick');
 
         this.clock.tick(250);
         assert.ok(lookup._popup.option('visible'), 'popup hide after click by no selected item after hide->show events');
-    });
-
-    QUnit.test('clear button should save valueChangeEvent', function(assert) {
-        const valueChangedHandler = sinon.spy();
-
-        const lookup = this.element
-            .dxLookup({
-                dataSource: [1],
-                value: 1,
-                opened: true,
-                onValueChanged: valueChangedHandler,
-                showClearButton: true
-            })
-            .dxLookup('instance');
-
-        const $clearButton = $(lookup.content()).parent().find('.dx-popup-clear');
-        $clearButton.trigger('dxclick');
-
-        assert.equal(valueChangedHandler.callCount, 1, 'valueChangedHandler has been called');
-        assert.equal(valueChangedHandler.getCall(0).args[0].event.type, 'dxclick', 'event is correct');
     });
 
     QUnit.test('B238773 - dxLookup does not work properly if the valueExpr option is set to this', function(assert) {
@@ -1381,7 +1333,11 @@ QUnit.module('Lookup', {
 
         try {
             const lookup = $lookup
-                .dxLookup({ dataSource: ['blue', 'orange', 'lime', 'purple'], value: 'orange', fullScreen: true })
+                .dxLookup({
+                    dataSource: ['blue', 'orange', 'lime', 'purple'],
+                    value: 'orange',
+                    'dropDownOptions.fullScreen': true
+                })
                 .dxLookup('instance');
 
             $(lookup.field()).trigger('dxclick');
@@ -1392,26 +1348,6 @@ QUnit.module('Lookup', {
             $lookup.dxLookup('instance').dispose();
             isMaterialStub.restore();
         }
-    });
-
-    QUnit.test('onValueChanged argument should contains an event property after selecting an item by click', function(assert) {
-        const valueChangedStub = sinon.stub();
-        this.instance.option({
-            dataSource: [1, 2, 3],
-            onValueChanged: valueChangedStub
-        });
-
-        this.togglePopup();
-
-        this.$list
-            .find('.dx-list-item')
-            .first()
-            .trigger('dxclick');
-
-        const { event } = valueChangedStub.lastCall.args[0];
-
-        assert.ok(event);
-        assert.strictEqual(event.type, 'dxclick');
     });
 
     QUnit.test('Lookup should catch delayed data', function(assert) {
@@ -1428,7 +1364,7 @@ QUnit.module('Lookup', {
             displayExpr: 'Name',
             valueExpr: 'ID',
             value: 1,
-            title: 'Select employee'
+            'dropDownOptions.title': 'Select employee'
         });
 
         setTimeout(() => {
@@ -1482,7 +1418,7 @@ QUnit.module('options', {
 }, () => {
     QUnit.test('popupWidth', function(assert) {
         const instance = $('#lookup').dxLookup({
-            popupWidth: 100,
+            'dropDownOptions.width': 100,
             usePopover: false
         }).dxLookup('instance');
 
@@ -1490,13 +1426,13 @@ QUnit.module('options', {
 
         assert.equal(instance._popup.option('width'), 100, 'Option initialized correctly');
 
-        instance.option('popupWidth', 200);
+        instance.option('dropDownOptions.width', 200);
         assert.equal(instance._popup.option('width'), 200, 'Option set correctly');
     });
 
     QUnit.test('popupWidth option test for usePopover mode', function(assert) {
         const instance = $('#lookup').dxLookup({
-            popupWidth: 100,
+            'dropDownOptions.width': 100,
             usePopover: true
         }).dxLookup('instance');
 
@@ -1504,7 +1440,7 @@ QUnit.module('options', {
 
         assert.equal(instance._popup.option('width'), 100, 'Option initialized correctly');
 
-        instance.option('popupWidth', 200);
+        instance.option('dropDownOptions.width', 200);
         assert.equal(instance._popup.option('width'), 200, 'Option set correctly');
     });
 
@@ -1534,9 +1470,9 @@ QUnit.module('options', {
             initialValue = initialValue();
         }
 
-        instance.option('popupWidth', initialValue + 1);
+        instance.option('dropDownOptions.width', initialValue + 1);
 
-        instance.option('popupWidth', 'auto');
+        instance.option('dropDownOptions.width', 'auto');
         let autoValue = popup.option('width');
         if($.isFunction(autoValue)) {
             autoValue = autoValue();
@@ -1546,13 +1482,13 @@ QUnit.module('options', {
     });
 
     QUnit.test('popupHeight', function(assert) {
-        const instance = $('#lookup').dxLookup({ popupHeight: 100, usePopover: false }).dxLookup('instance');
+        const instance = $('#lookup').dxLookup({ 'dropDownOptions.height': 100, usePopover: false }).dxLookup('instance');
 
         $(instance._$field).trigger('dxclick');
 
         assert.equal(instance._popup.option('height'), 100, 'Option initialized correctly');
 
-        instance.option('popupHeight', 200);
+        instance.option('dropDownOptions.height', 200);
         assert.equal(instance._popup.option('height'), 200, 'Option set correctly');
     });
 
@@ -1568,9 +1504,9 @@ QUnit.module('options', {
             initialValue = initialValue();
         }
 
-        instance.option('popupHeight', initialValue + 1);
+        instance.option('dropDownOptions.height', initialValue + 1);
 
-        instance.option('popupHeight', 'auto');
+        instance.option('dropDownOptions.height', 'auto');
         let autoValue = popup.option('height');
         if($.isFunction(autoValue)) {
             autoValue = autoValue();
@@ -1659,7 +1595,7 @@ QUnit.module('options', {
         const instance = $('#lookup').dxLookup({ noDataText: 'nope' }).dxLookup('instance');
 
         $(instance._$field).trigger('dxclick');
-        const listInstance = instance._list;
+        const listInstance = getList();
 
         assert.equal(listInstance.option('noDataText'), 'nope', 'correct initialization');
 
@@ -1685,7 +1621,7 @@ QUnit.module('options', {
 
         assert.equal($popupWrapper.find('.dx-button.dx-popup-cancel').text(), 'nope', 'correct initialization');
         assert.equal($popupWrapper.find('.dx-button.dx-popup-clear').text(), 'fuu', 'correct initialization');
-        assert.equal($popupWrapper.find('.dx-button.dx-popup-done').text(), 'yep', 'correct initialization');
+        assert.equal($popupWrapper.find(`.dx-button.${APPLY_BUTTON_CLASS}`).text(), 'yep', 'correct initialization');
 
         instance.option('cancelButtonText', 'nopenope');
         instance.option('clearButtonText', 'fuufuu');
@@ -1694,7 +1630,7 @@ QUnit.module('options', {
 
         assert.equal($popupWrapper.find('.dx-button.dx-popup-cancel').text(), 'nopenope', 'correct option change');
         assert.equal($popupWrapper.find('.dx-button.dx-popup-clear').text(), 'fuufuu', 'correct option change');
-        assert.equal($popupWrapper.find('.dx-button.dx-popup-done').text(), 'yepyep', 'correct option change');
+        assert.equal($popupWrapper.find(`.dx-button.${APPLY_BUTTON_CLASS}`).text(), 'yepyep', 'correct option change');
     });
 
     QUnit.test('displayExpr, valueExpr', function(assert) {
@@ -1719,7 +1655,7 @@ QUnit.module('options', {
 
         $(instance._$field).trigger('dxclick');
 
-        $firstItem = $(instance._list.$element().find('.dx-list-item')[0]);
+        $firstItem = $(getList().$element().find('.dx-list-item')[0]);
         assert.equal($firstItem.text(), 'one', 'displayExpr work in list items');
 
         instance.option('value', 1);
@@ -1727,7 +1663,7 @@ QUnit.module('options', {
         assert.equal(instance.option('displayValue'), 'one', 'display field work for \'displayValue\' option');
 
         instance.option('displayExpr', 'number');
-        $firstItem = $(instance._list.$element().find('.dx-list-item')[0]);
+        $firstItem = $(getList().$element().find('.dx-list-item')[0]);
         assert.equal($firstItem.text(), '1', 'displayExpr changing rerenders list items');
         assert.equal(instance.option('displayValue'), '1', 'displayExpr changing work for \'displayValue\' option');
     });
@@ -1745,7 +1681,7 @@ QUnit.module('options', {
 
         $(instance._$field).trigger('dxclick');
 
-        const $selectedItem = $('.' + LIST_ITEM_SELECTED_CLASS, instance._list.$element());
+        const $selectedItem = $('.' + LIST_ITEM_SELECTED_CLASS, getList().$element());
         assert.equal($selectedItem.text(), '1', 'select right item after render list');
     });
 
@@ -1759,7 +1695,7 @@ QUnit.module('options', {
 
         $(instance._$field).trigger('dxclick');
 
-        const $selectedItem = $(instance._list.$element().find('.' + LIST_ITEM_SELECTED_CLASS));
+        const $selectedItem = $(getList().$element().find('.' + LIST_ITEM_SELECTED_CLASS));
 
         assert.ok($selectedItem.length, 'select item after render list');
     });
@@ -1777,7 +1713,9 @@ QUnit.module('options', {
 
         $(instance._$field).trigger('dxclick');
 
-        const $firstItem = $(instance._list._itemElements()[0]); const $secondItem = $(instance._list._itemElements()[1]); const $field = $(instance._$field);
+        const $firstItem = $(getList()._itemElements()[0]);
+        const $secondItem = $(getList()._itemElements()[1]);
+        const $field = $(instance._$field);
 
         assert.ok($secondItem.hasClass(LIST_ITEM_SELECTED_CLASS), 'class selected was added');
         assert.ok(!$firstItem.hasClass(LIST_ITEM_SELECTED_CLASS), 'class selected was not added to unselected item');
@@ -1808,7 +1746,9 @@ QUnit.module('options', {
 
         $(instance._$field).trigger('dxclick');
 
-        const $firstItem = $(instance._list.$element().find('.dx-list-item')[0]); const $secondItem = $(instance._list.$element().find('.dx-list-item')[1]); const $field = $(instance._$field);
+        const $firstItem = $(getList().$element().find('.dx-list-item')[0]);
+        const $secondItem = $(getList().$element().find('.dx-list-item')[1]);
+        const $field = $(instance._$field);
 
         assert.ok(!$firstItem.hasClass(LIST_ITEM_SELECTED_CLASS), 'class selected was not added to unselected item');
         assert.ok($secondItem.hasClass(LIST_ITEM_SELECTED_CLASS), 'class selected was added');
@@ -1828,7 +1768,7 @@ QUnit.module('options', {
         const instance = $('#lookup').dxLookup({ dataSource: dataSource1 }).dxLookup('instance');
 
         $(instance._$field).trigger('dxclick');
-        const list = instance._list;
+        const list = getList();
 
         assert.strictEqual(instance._dataSource, list._dataSource);
         assert.deepEqual(instance._dataSource._items, dataSource1);
@@ -1844,7 +1784,7 @@ QUnit.module('options', {
         const instance = $('#lookup').dxLookup({ items: items1 }).dxLookup('instance');
 
         $(instance._$field).trigger('dxclick');
-        const list = instance._list;
+        const list = getList();
 
         assert.deepEqual(list._dataSource._items, items1);
 
@@ -1860,27 +1800,27 @@ QUnit.module('options', {
 
         $(instance._$field).trigger('dxclick');
 
-        assert.deepEqual(instance._list._dataSource._items, items2);
+        assert.deepEqual(getList()._dataSource._items, items2);
     });
 
     QUnit.test('title', function(assert) {
         const instance = $('#lookup').dxLookup({
             dataSource: [],
-            title: 'title'
+            'dropDownOptions.title': 'title'
         }).dxLookup('instance');
 
         $(instance._$field).trigger('dxclick');
 
         assert.equal(instance._popup.option('title'), 'title', 'title sets to popup correctly on init');
 
-        instance.option('title', 'title2');
+        instance.option('dropDownOptions.title', 'title2');
         assert.equal(instance._popup.option('title'), 'title2', 'title sets to popup correctly on change');
     });
 
     QUnit.test('fullScreen', function(assert) {
         const instance = $('#lookup').dxLookup({
             dataSource: [],
-            fullScreen: true,
+            'dropDownOptions.fullScreen': true,
             usePopover: false
         }).dxLookup('instance');
 
@@ -1891,7 +1831,7 @@ QUnit.module('options', {
         popup = instance._popup;
         assert.equal(popup.option('fullScreen'), true, 'fullScreen sets to popup correctly on init');
 
-        instance.option('fullScreen', false);
+        instance.option('dropDownOptions.fullScreen', false);
         $(instance._$field).trigger('dxclick');
         popup = instance._popup;
         assert.equal(popup.option('fullScreen'), false, 'fullScreen sets to popup correctly on change');
@@ -1922,7 +1862,7 @@ QUnit.module('options', {
 
         const search = instance._searchBox;
         const $field = $(instance._$field);
-        const $list = $(instance._list.$element());
+        const $list = $(getList().$element());
 
         assert.equal($list.find('.dx-list-item').filter(':visible').length, 0, 'No items are expected to be shown');
         assert.equal($field.text(), placeholder);
@@ -1956,7 +1896,7 @@ QUnit.module('options', {
 
         instance.open();
         let $popupWrapper = $('.dx-popup-wrapper');
-        assert.equal($popupWrapper.find('.dx-popup-done.dx-button').length, 0, 'Apply button is not rendered');
+        assert.equal($popupWrapper.find(`.dx-button.${APPLY_BUTTON_CLASS}`).length, 0, 'Apply button is not rendered');
         assert.ok(!instance.option('showDoneButton'), '\'showDoneButton\' option is false');
 
         instance.close();
@@ -1964,7 +1904,7 @@ QUnit.module('options', {
         instance.open();
 
         $popupWrapper = $('.dx-popup-wrapper');
-        assert.equal($popupWrapper.find('.dx-popup-done.dx-button').length, 1, 'Apply button is rendered');
+        assert.equal($popupWrapper.find(`.dx-button.${APPLY_BUTTON_CLASS}`).length, 1, 'Apply button is rendered');
     });
 
     QUnit.test('\'showCancelButton\' option should affect on Cancel button rendering', function(assert) {
@@ -2002,6 +1942,24 @@ QUnit.module('options', {
 
         assert.equal($(instance.content()).find('.' + LOOKUP_SEARCH_WRAPPER_CLASS).length, 1, 'search wrapper is rendered');
     });
+
+    QUnit.test('clear button option runtime change', function(assert) {
+        const getClearButton = (instance) => $(instance.content()).parent().find(toSelector(CLEAR_BUTTON_CLASS)).get(0);
+
+        const lookup = $('#lookup')
+            .dxLookup({
+                deferRendering: false,
+                showClearButton: true
+            })
+            .dxLookup('instance');
+
+        let $clearButton = getClearButton(lookup);
+        assert.ok($clearButton, 'clearButton is rendered');
+
+        lookup.option('showClearButton', false);
+        $clearButton = getClearButton(lookup);
+        assert.notOk($clearButton, 'clearButton is not rendered after option runtime change');
+    });
 });
 
 QUnit.module('popup options', {
@@ -2031,11 +1989,32 @@ QUnit.module('popup options', {
         assert.equal($lookup.hasClass(SKIP_GESTURE_EVENT_CLASS), false, 'skip gesture event class was removed after popup was closed');
     });
 
+    QUnit.test('toolbarItems should be passed to the popover (T896951)', function(assert) {
+        const buttonConfig = {
+            location: 'after',
+            toolbar: 'bottom',
+            widget: 'dxButton',
+            options: { text: 'test' }
+        };
+
+        const lookup = $('#lookup').dxLookup({
+            opened: true,
+            dropDownOptions: {
+                toolbarItems: [buttonConfig]
+            }
+        }).dxLookup('instance');
+
+        const $button = $(lookup.content()).parent().find('.dx-button-text');
+
+        assert.deepEqual(lookup._popup.option('toolbarItems'), [buttonConfig], 'toolbarItems are passed correctly');
+        assert.strictEqual($button.text(), 'test', 'button is added successfully');
+    });
+
     QUnit.test('shading should present', function(assert) {
         const $lookup = $('#lookupOptions');
 
         const instance = $lookup.dxLookup({
-            shading: true,
+            'dropDownOptions.shading': true,
             visible: true,
             usePopover: false
         }).dxLookup('instance');
@@ -2045,7 +2024,7 @@ QUnit.module('popup options', {
 
         assert.ok($wrapper.hasClass(OVERLAY_SHADER_CLASS));
 
-        instance.option('shading', false);
+        instance.option('dropDownOptions.shading', false);
         assert.ok(!$wrapper.hasClass(OVERLAY_SHADER_CLASS));
     });
 
@@ -2066,7 +2045,7 @@ QUnit.module('popup options', {
     QUnit.test('lookup popup should be hidden after click outside was present', function(assert) {
         const $lookup = $('#lookupOptions');
         const instance = $lookup.dxLookup({
-            closeOnOutsideClick: true,
+            'dropDownOptions.closeOnOutsideClick': true,
             visible: true,
             usePopover: false
         }).dxLookup('instance');
@@ -2084,7 +2063,7 @@ QUnit.module('popup options', {
 
     QUnit.test('custom titleTemplate option', function(assert) {
         const $lookup = $('#lookupOptions').dxLookup({
-            titleTemplate: 'customTitle',
+            'dropDownOptions.titleTemplate': 'customTitle',
             visible: true,
             showCancelButton: false
         });
@@ -2098,7 +2077,7 @@ QUnit.module('popup options', {
 
     QUnit.test('custom titleTemplate option is set correctly on init', function(assert) {
         const $lookup = $('#lookupOptions').dxLookup({
-            titleTemplate: function(titleElement) {
+            'dropDownOptions.titleTemplate': function(titleElement) {
                 assert.equal(isRenderer(titleElement), !!config().useJQuery, 'titleElement is correct');
                 let result = '<div class=\'test-title-renderer\'>';
                 result += '<h1>Title</h1>';
@@ -2120,11 +2099,11 @@ QUnit.module('popup options', {
 
         const $lookup = $('#lookupOptions').dxLookup(); const instance = $lookup.dxLookup('instance');
 
-        instance.option('onTitleRendered', function(e) {
+        instance.option('dropDownOptions.onTitleRendered', function(e) {
             assert.ok(true, 'option \'onTitleRendered\' successfully passed to the popup widget raised on titleTemplate');
         });
 
-        instance.option('titleTemplate', function(titleElement) {
+        instance.option('dropDownOptions.titleTemplate', function(titleElement) {
             let result = '<div class=\'changed-test-title-renderer\'>';
             result += '<h1>Title</h1>';
             result += '</div>';
@@ -2182,9 +2161,11 @@ QUnit.module('popup options', {
     QUnit.test('popup height should be saved after configuration', function(assert) {
         $('#lookup').dxLookup({
             dataSource: [1, 2, 3, 4, 5],
-            popupHeight: $(window).height() * 0.8,
             opened: true,
-            fullScreen: false,
+            dropDownOptions: {
+                fullScreen: false,
+                height: $(window).height() * 0.8
+            },
             usePopover: false
         });
 
@@ -2261,10 +2242,10 @@ QUnit.module('popup options', {
                 width: 300,
                 searchEnabled: false,
                 dropDownOptions: {
+                    position: 'center',
                     container: $('body')
                 },
                 target: $('body'),
-                position: 'center',
                 usePopover: true,
                 opened: true
             }).dxLookup('instance');
@@ -2273,6 +2254,67 @@ QUnit.module('popup options', {
             assert.ok($(instance.content()).height() >= $(instance.content()).find('.dx-scrollable-content').height(), $(instance.content()).height() + ' >= ' + $(instance.content()).find('.dx-scrollable-content').height());
         } finally {
             $rootLookup.remove();
+        }
+    });
+
+    ['onTitleRendered', 'closeOnOutsideClick'].forEach(option => {
+        QUnit.test(`${option} should be passed to the popup`, function(assert) {
+            const stub = sinon.stub();
+            const fullOptionName = `dropDownOptions.${option}`;
+
+            const instance = $('#lookup').dxLookup({
+                [fullOptionName]: stub,
+                deferRendering: false
+            }).dxLookup('instance');
+            const popup = instance._popup;
+
+            assert.strictEqual(popup.option(option), stub, `${option} is passed to the popup on init`);
+
+            instance.option(fullOptionName, null);
+            assert.strictEqual(popup.option(option), null, `${option} is passed to the popup after runtime change`);
+        });
+    });
+
+    QUnit.test('animation option should be passed to the popup', function(assert) {
+        const animationStub = {
+            show: { type: 'slide', duration: 400 }
+        };
+
+        const instance = $('#lookup').dxLookup({
+            'dropDownOptions.animation': animationStub,
+            deferRendering: false
+        }).dxLookup('instance');
+        const popup = instance._popup;
+
+        assert.deepEqual(popup.option('animation'), animationStub, 'animation option is passed to the popup on init');
+
+        instance.option('dropDownOptions.animation', null);
+        assert.strictEqual(popup.option('animation'), null, 'animation option is passed to the popup after runtime change');
+    });
+
+    QUnit.test('Check closeOnTargetScroll option in Material theme', function(assert) {
+        const isMaterialStub = sinon.stub(themes, 'isMaterial');
+        const $lookup = $('#lookup');
+
+        isMaterialStub.returns(true);
+
+        try {
+            const lookup = $lookup
+                .dxLookup({
+                    dataSource: ['blue', 'orange', 'lime', 'purple'],
+                    value: 'orange'
+                })
+                .dxLookup('instance');
+
+            assert.ok(lookup._popupConfig().closeOnTargetScroll, 'lookup close on parent scroll (without centering)');
+
+            lookup.option('dropDownCentered', true);
+
+            assert.ok(lookup._popupConfig().closeOnTargetScroll, 'lookup close on parent scroll (with centering)');
+
+        } finally {
+            $lookup.dxLookup('instance').dispose();
+            isMaterialStub.restore();
         }
     });
 });
@@ -2390,11 +2432,13 @@ QUnit.module('Native scrolling', () => {
                     paginate: true,
                     pageSize: 40
                 },
-                fullScreen: false,
+                dropDownOptions: {
+                    fullScreen: false,
+                    height: '50%'
+                },
                 searchTimeout: 0,
                 width: 200,
-                usePopover: false,
-                popupHeight: '50%'
+                usePopover: false
             });
 
         $lookup.dxLookup('instance').open();
@@ -2434,8 +2478,10 @@ QUnit.module('Native scrolling', () => {
                 searchTimeout: 0,
                 width: 200,
                 usePopover: false,
-                popupHeight: 'auto',
-                fullScreen: false
+                dropDownOptions: {
+                    fullScreen: false,
+                    height: 'auto'
+                }
             });
 
         $lookup.dxLookup('instance').open();
@@ -2486,8 +2532,12 @@ QUnit.module('focus policy', {
     }
 }, () => {
     QUnit.testInActiveWindow('T338144 - focused element should not be reset after popup is reopened if the \'searchEnabled\' is false', function(assert) {
-        if(devices.real().deviceType !== 'desktop') {
-            assert.ok(true, 'test does not actual for mobile devices');
+        const isDesktop = devices.real().deviceType === 'desktop';
+        const isIE11OrLower = browser.msie && parseInt(browser.version) <= 11;
+
+        if(!isDesktop || isIE11OrLower) {
+            const message = isIE11OrLower ? 'test is ignored in IE11 because it failes on farm' : 'test does not actual for mobile devices';
+            assert.ok(true, message);
             return;
         }
 
@@ -2804,7 +2854,7 @@ QUnit.module('keyboard navigation', {
         const keyboard = keyboardMock($popupInput);
         let event;
 
-        lookup._list.option('focusStateEnabled', true);
+        getList().option('focusStateEnabled', true);
 
         $($popupInput).on('keydown', function(e) {
             if(e.key === ' ') {
@@ -2938,7 +2988,7 @@ QUnit.module('dataSource integration', {
             this.clock.tick(loadDelay);
             const $content = $(instance.content());
             const $input = $content.find(`.${LOOKUP_SEARCH_CLASS} .${TEXTEDITOR_INPUT_CLASS}`);
-            const $loadPanel = $content.find('.dx-scrollview-loadpanel');
+            const $loadPanel = $content.find(`.${SCROLL_VIEW_LOAD_PANEL_CLASS}`);
             const keyboard = keyboardMock($input);
 
             keyboard.type('2');
@@ -2971,7 +3021,7 @@ QUnit.module('dataSource integration', {
 
         this.clock.tick(loadDelay);
         const $content = $(instance.content());
-        const $loadPanel = $content.find('.dx-scrollview-loadpanel');
+        const $loadPanel = $content.find(`.${SCROLL_VIEW_LOAD_PANEL_CLASS}`);
 
         instance.getDataSource().load();
         this.clock.tick(loadDelay / 2);
@@ -2979,6 +3029,41 @@ QUnit.module('dataSource integration', {
 
         this.clock.tick(loadDelay / 2);
         assert.ok($loadPanel.is(':hidden'), 'load panel is not visible when loading has been finished');
+    });
+
+    QUnit.test('load panel should be displayed if old search result has no items and now search value was modified (T985917)', function(assert) {
+        const loadDelay = 1000;
+        const instance = this.$element.dxLookup({
+            dataSource: {
+                load: () => {
+                    const d = new $.Deferred();
+
+                    setTimeout(() => {
+                        d.resolve([]);
+                    }, loadDelay);
+
+                    return d;
+                }
+            },
+            searchEnabled: true,
+            searchTimeout: loadDelay / 10,
+            useNativeScrolling: false,
+            opened: true
+        }).dxLookup('instance');
+
+        this.clock.tick(loadDelay);
+
+        const $content = $(instance.content());
+        const $input = $content.find(`.${LOOKUP_SEARCH_CLASS} .${TEXTEDITOR_INPUT_CLASS}`);
+        const keyboard = keyboardMock($input);
+
+        keyboard.type('1');
+        this.clock.tick(loadDelay * 2);
+        keyboard.type('2');
+        this.clock.tick(loadDelay / 2);
+        const $loadPanel = $content.find(`.${SCROLL_VIEW_LOAD_PANEL_CLASS}`);
+
+        assert.ok($loadPanel.is(':visible'), 'load panel is visible');
     });
 });
 
@@ -3124,7 +3209,7 @@ if(devices.real().deviceType === 'desktop') {
                 const $input = helper.widget._popup.$content().find(`.${TEXTEDITOR_INPUT_CLASS}`);
 
                 helper.checkAttributes($list, { id: helper.widget._listId, 'aria-label': 'No data to display', role: 'listbox', tabindex: '0' }, 'list');
-                helper.checkAttributes($field, { role: 'combobox', 'aria-expanded': 'true', 'aria-activedescendant': helper.widget._list.getFocusedItemId(), tabindex: '0', 'aria-controls': helper.widget._listId }, 'field');
+                helper.checkAttributes($field, { role: 'combobox', 'aria-owns': helper.widget._popupContentId, 'aria-expanded': 'true', tabindex: '0', 'aria-controls': helper.widget._listId }, 'field');
                 helper.checkAttributes(helper.$widget, { 'aria-owns': helper.widget._popupContentId }, 'widget');
                 helper.checkAttributes(helper.widget._popup.$content(), { id: helper.widget._popupContentId }, 'popupContent');
                 if($input.length) {
@@ -3133,7 +3218,7 @@ if(devices.real().deviceType === 'desktop') {
 
                 helper.widget.option('searchEnabled', !searchEnabled);
                 helper.checkAttributes($list, { id: helper.widget._listId, 'aria-label': 'No data to display', role: 'listbox', tabindex: '0' }, 'list');
-                helper.checkAttributes($field, { role: 'combobox', 'aria-expanded': 'true', 'aria-activedescendant': helper.widget._list.getFocusedItemId(), tabindex: '0', 'aria-controls': helper.widget._listId }, 'field');
+                helper.checkAttributes($field, { role: 'combobox', 'aria-owns': helper.widget._popupContentId, 'aria-expanded': 'true', tabindex: '0', 'aria-controls': helper.widget._listId }, 'field');
                 helper.checkAttributes(helper.$widget, { 'aria-owns': helper.widget._popupContentId }, 'widget');
                 helper.checkAttributes(helper.widget._popup.$content(), { id: helper.widget._popupContentId }, 'popupContent');
                 if($input.length) {
@@ -3182,11 +3267,19 @@ QUnit.module('default options', {
 
             const lookup = $lookup.dxLookup({ dataSource: ['blue', 'orange', 'lime', 'purple'] }).dxLookup('instance');
 
-            assert.equal(lookup.option('popupWidth')(), $lookup.outerWidth(), 'popup width match with lookup field width');
+            assert.equal(lookup.option('dropDownOptions.width')(), $lookup.outerWidth(), 'popup width match with lookup field width');
 
             $(lookup.field()).trigger('dxclick');
 
-            assert.equal(lookup.option('popupHeight')(), $('.dx-list-item').height() * 4 + 16, 'popup height contains 4 list items and 2 paddings (8px)');
+            assert.equal(lookup.option('dropDownOptions.height')(), $('.dx-list-item').height() * 4 + 16, 'if 4 items popup height 4 items and 2 paddings (8px)');
+
+            lookup.close();
+
+            lookup.option('dataSource', ['blue', 'orange', 'lime', 'purple', 'red', 'green']);
+
+            $(lookup.field()).trigger('dxclick');
+
+            assert.equal(lookup.option('dropDownOptions.height')(), $('.dx-list-item').height() * 5 + 16, 'if items more 4 popup height is 5 items and 2 paddings (8px)');
 
             lookup.close();
 
@@ -3195,16 +3288,16 @@ QUnit.module('default options', {
 
             $(lookup.field()).trigger('dxclick');
 
-            assert.equal(lookup.option('popupHeight')(), $('.dx-lookup-search-wrapper').outerHeight() + $('.dx-list-item').height() * 4 + $('.dx-toolbar').outerHeight() + 16, 'popup height contains 4 list items when there are search and cancel button');
+            assert.equal(lookup.option('dropDownOptions.height')(), $('.dx-lookup-search-wrapper').outerHeight() + $('.dx-list-item').height() * 5 + $('.dx-toolbar').outerHeight() + 16, 'popup height contains 4 list items when there are search and cancel button');
 
             lookup.close();
-            lookup.option('popupWidth', 200);
-            lookup.option('popupHeight', 300);
+            lookup.option('dropDownOptions.width', 200);
+            lookup.option('dropDownOptions.height', 300);
 
             $(lookup.field()).trigger('dxclick');
 
-            assert.equal(lookup.option('popupHeight'), 300, 'popup height changed if change popupHeight option value');
-            assert.equal(lookup.option('popupWidth'), 200, 'popup width changed if change popupWidth option value');
+            assert.equal(lookup.option('dropDownOptions.height'), 300, 'popup height changed if change popupHeight option value');
+            assert.equal(lookup.option('dropDownOptions.width'), 200, 'popup width changed if change popupWidth option value');
 
             lookup.close();
 
@@ -3214,11 +3307,132 @@ QUnit.module('default options', {
         }
     });
 
+    QUnit.test('Check popup position if there are invisible items in dataSource for Material theme', function(assert) {
+        const origIsMaterial = themes.isMaterial;
+        themes.isMaterial = function() { return true; };
+
+        const materialLookupPadding = 8;
+        const $lookup = $('<div>').prependTo('body');
+
+        try {
+            const lookup = $lookup.dxLookup({ dataSource: [{
+                'ID': 1,
+                'Color': 'black',
+                'visible': false
+            }, {
+                'ID': 2,
+                'Color': 'grey',
+                'visible': true
+            }, {
+                'ID': 3,
+                'Color': 'green',
+                'visible': true
+            }, {
+                'ID': 4,
+                'Color': 'white',
+                'visible': true
+            }, {
+                'ID': 5,
+                'Color': 'yellow',
+                'visible': true
+            }], valueExpr: 'ID', displayExpr: 'Color' }).dxLookup('instance');
+
+            $lookup.css('margin-top', 0);
+
+            $(lookup.field()).trigger('dxclick');
+
+            let $popup = $('.dx-popup-wrapper');
+
+            assert.roughEqual($popup.find('.dx-overlay-content').position().top, 0, 2, 'popup position if nothing is selected');
+            assert.equal(lookup.option('dropDownOptions.height')(), $('.dx-list-item').not('.dx-state-invisible').height() * 4 + materialLookupPadding * 2, 'popup height equal 4 items and 2 paddings (8px)');
+
+            lookup.close();
+
+            $lookup.css('margin-top', 200);
+            lookup.option('value', 3);
+
+            $(lookup.field()).trigger('dxclick');
+
+            $popup = $('.dx-popup-wrapper');
+
+            assert.roughEqual($popup.find('.dx-overlay-content').position().top, -2.5 - $('.dx-list-item').not('.dx-state-invisible').height(), 3, 'popup position if second visible item is selected');
+            lookup.close();
+        } finally {
+            $lookup.remove();
+            themes.isMaterial = origIsMaterial;
+        }
+    });
+
+    QUnit.test('Check default popupHeight, position.of for Material theme if there are grouped items', function(assert) {
+        const origIsMaterial = themes.isMaterial;
+        themes.isMaterial = function() { return true; };
+
+        const $lookup = $('<div>').prependTo('body');
+
+        try {
+
+            const lookup = $lookup.dxLookup({ dataSource: new DataSource({
+                store: [{
+                    'ID': 1,
+                    'Group': 'dark',
+                    'Color': 'black'
+                }, {
+                    'ID': 2,
+                    'Group': 'dark',
+                    'Color': 'grey'
+                }, {
+                    'ID': 3,
+                    'Group': 'dark',
+                    'Color': 'green'
+                }, {
+                    'ID': 4,
+                    'Group': 'light',
+                    'Color': 'white'
+                }, {
+                    'ID': 5,
+                    'Group': 'light',
+                    'Color': 'yellow'
+                }, {
+                    'ID': 6,
+                    'Group': 'light',
+                    'Color': 'rose'
+                }, {
+                    'ID': 7,
+                    'Group': 'light',
+                    'Color': 'blue'
+                }], key: 'ID', group: 'Group' }), grouped: true, valueExpr: 'Color', displayExpr: 'Color', value: 'grey' }).dxLookup('instance');
+
+            $lookup.css('margin-top', 200);
+
+            $(lookup.field()).trigger('dxclick');
+
+            assert.roughEqual(lookup.option('dropDownOptions.height')(), $('.dx-list-item').outerHeight() * 3 + $('.dx-list-group-header').outerHeight() * 2 + 8, 2, 'if items more 5 popup height is 5 items and padding 8px');
+
+            lookup.close();
+
+            lookup.option('value', 'white');
+
+            $(lookup.field()).trigger('dxclick');
+
+            const $popup = $('.dx-popup-wrapper');
+
+            assert.roughEqual($popup.find('.dx-overlay-content').position().top, -($popup.find('.dx-overlay-content').height() - $('.dx-list-item').height()) / 2, 2, 'offset of the lookup if fourth item is selected');
+
+            lookup.close();
+
+        } finally {
+            $lookup.remove();
+            themes.isMaterial = origIsMaterial;
+        }
+    });
+
+
     QUnit.test('Check popup position offset for Material theme', function(assert) {
         const origIsMaterial = themes.isMaterial;
         themes.isMaterial = function() { return true; };
 
         const $lookup = $('<div>').prependTo('body');
+        const materialLookupPadding = 8;
 
         try {
 
@@ -3230,7 +3444,7 @@ QUnit.module('default options', {
 
             assert.roughEqual($popup.find('.dx-overlay-content').position().top, -3.5, 1, 'offset of the lookup if first item is selected');
 
-            lookup._list.scrollTo(100);
+            getList().scrollTo(100);
 
             lookup.close();
 
@@ -3242,14 +3456,14 @@ QUnit.module('default options', {
 
             $(lookup.field()).trigger('dxclick');
 
-            lookup._list.scrollTo(58);
+            getList().scrollTo(58);
 
             $('.dx-list-item').eq(1).trigger('dxclick');
 
             $(lookup.field()).trigger('dxclick');
 
-            assert.roughEqual($popup.find('.dx-overlay-content').position().top, -3.5, 1, 'offset of the lookup after scrolling and cut-off item selecting');
-            assert.roughEqual($('.dx-list-item').eq(1).position().top, lookup._list.scrollTop(), 2, 'position of the selected item after scrolling and cut-off item selecting');
+            assert.roughEqual($popup.find('.dx-overlay-content').position().top, -2.5 - materialLookupPadding, 1, 'offset of the lookup after scrolling and cut-off item selecting');
+            assert.roughEqual($('.dx-list-item').eq(1).position().top, getList().scrollTop(), 2, 'position of the selected item after scrolling and cut-off item selecting');
 
             lookup.close();
 
@@ -3257,7 +3471,7 @@ QUnit.module('default options', {
 
             $(lookup.field()).trigger('dxclick');
 
-            assert.roughEqual($popup.find('.dx-overlay-content').position().top, -2.5, 1, 'offset of the lookup if last item is selected');
+            assert.roughEqual($popup.find('.dx-overlay-content').position().top, -2.5 - materialLookupPadding, 1, 'offset of the lookup if last item is selected');
 
             lookup.close();
 
@@ -3272,7 +3486,7 @@ QUnit.module('default options', {
         }
     });
 
-    QUnit.test('Check itemCenteringEnabled option for Material theme', function(assert) {
+    QUnit.test('Check popup height with no found data option for Material theme', function(assert) {
         const origIsMaterial = themes.isMaterial;
         themes.isMaterial = function() { return true; };
 
@@ -3280,25 +3494,152 @@ QUnit.module('default options', {
 
         try {
 
-            const lookup = $lookup.dxLookup({ dataSource: ['blue', 'orange', 'lime', 'purple', 'green'], value: 'blue' }).dxLookup('instance');
+            const lookup = $lookup.dxLookup({ dataSource: [], searchEnabled: true }).dxLookup('instance');
 
-            lookup.option('usePopover', false);
-            lookup.option('itemCenteringEnabled', false);
+            $(lookup.field()).trigger('dxclick');
+
+            const $popup = $('.dx-popup-content');
+
+            assert.roughEqual($popup.height(), 91, 1, 'popup height if DataSource without items and `searchEnabled: true`');
+        } finally {
+            $lookup.remove();
+            themes.isMaterial = origIsMaterial;
+        }
+    });
+
+    QUnit.test('Check when dropDownCentered option for Material theme', function(assert) {
+        const origIsMaterial = themes.isMaterial;
+        themes.isMaterial = function() { return true; };
+
+        const $lookup = $('<div>').prependTo('body');
+        const materialLookupPadding = 8;
+
+        try {
+
+            const lookup = $lookup.dxLookup({ dataSource: ['blue', 'orange', 'lime', 'purple', 'green', 'red'], value: 'orange' }).dxLookup('instance');
 
             $(lookup.field()).trigger('dxclick');
 
             let $popup = $('.dx-popup-wrapper');
 
-            assert.roughEqual($popup.find('.dx-overlay-content').outerWidth(), $(window).width() * 0.8, 3, 'default popup width like generic');
-            assert.roughEqual($popup.find('.dx-overlay-content').outerHeight(), $('.dx-list-item').height() * 5 + 2, 3, 'default popup height like generic');
+            assert.roughEqual($popup.find('.dx-overlay-content').position().top, -2.5 - materialLookupPadding, 1, 'popup position if second item is selected and there is not top place');
 
-            assert.roughEqual($popup.find('.dx-overlay-content').position().top, ($(window).height() - $popup.find('.dx-overlay-content').outerHeight()) / 2, 1, 'default popup position of window');
+            lookup.close();
 
-            lookup.option('position', 'top');
-
-            assert.roughEqual($popup.find('.dx-overlay-content').position().top, 0, 1, 'popup position of window after change position');
+            $lookup.css('margin-top', 100);
 
             $(lookup.field()).trigger('dxclick');
+
+            $popup = $('.dx-popup-wrapper');
+
+            assert.roughEqual($popup.find('.dx-overlay-content').position().top, -2.5 - $('.dx-list-item').height(), 2, 'popup position if second item is selected and there is top place');
+
+            lookup.close();
+
+            $lookup.css('margin-top', 200);
+
+            lookup.option('value', 'lime');
+
+            $(lookup.field()).trigger('dxclick');
+
+            $popup = $('.dx-popup-wrapper');
+
+            assert.roughEqual($popup.find('.dx-overlay-content').position().top, -2.5 - $('.dx-list-item').height() * 2, 3, 'third item is centered');
+
+            lookup.close();
+
+            lookup.option('value', 'purple');
+
+            $(lookup.field()).trigger('dxclick');
+
+            $popup = $('.dx-popup-wrapper');
+
+            assert.roughEqual($popup.find('.dx-overlay-content').position().top, -2.5 - $('.dx-list-item').height() * 2 - materialLookupPadding * 2, 3, 'fourth item is centered');
+
+            lookup.close();
+
+            lookup.option('value', 'red');
+
+            $(lookup.field()).trigger('dxclick');
+
+            $popup = $('.dx-popup-wrapper');
+
+            assert.roughEqual($popup.find('.dx-overlay-content').position().top, -2.5 - $('.dx-list-item').height() * 4 - materialLookupPadding * 2, 2, 'popup position if last item is selected and there is place');
+
+            lookup.close();
+
+            $lookup.css('margin-top', 60);
+
+            lookup.option('value', 'lime');
+
+            $(lookup.field()).trigger('dxclick');
+
+            $popup = $('.dx-popup-wrapper');
+
+            assert.roughEqual($popup.find('.dx-overlay-content').position().top, -2.5 - $('.dx-list-item').height() - materialLookupPadding * 2, 3, 'popup position if there is not place for two items');
+
+            lookup.close();
+
+            lookup.option('value', 'red');
+
+            $(lookup.field()).trigger('dxclick');
+
+            $popup = $('.dx-popup-wrapper');
+
+            assert.roughEqual($popup.find('.dx-overlay-content').position().top, -2.5 - materialLookupPadding, 1, 'popup position if last item is selected and there is not place');
+
+            lookup.close();
+
+            lookup.option('dropDownCentered', false);
+
+            $(lookup.field()).trigger('dxclick');
+
+            $popup = $('.dx-popup-wrapper');
+
+            assert.roughEqual($popup.find('.dx-overlay-content').position().top, $(lookup.field()).outerHeight(), 3, 'popup position if dropDownCentered option is false');
+        } finally {
+            $lookup.remove();
+            themes.isMaterial = origIsMaterial;
+        }
+    });
+
+
+    QUnit.test('Check when dropDownCentered option is false and change options for Material theme', function(assert) {
+        const origIsMaterial = themes.isMaterial;
+        themes.isMaterial = function() { return true; };
+
+        const $lookup = $('<div>').prependTo('body');
+
+        const popupWidth = $(window).width() * 0.8;
+        const popupHeight = $(window).height() * 0.8;
+
+        try {
+
+            const lookup = $lookup.dxLookup({
+                dataSource: ['blue', 'orange', 'lime', 'purple', 'green'],
+                value: 'blue',
+                dropDownCentered: false,
+                dropDownOptions: {
+                    position: {
+                        at: 'center',
+                        my: 'center',
+                        of: $(window)
+                    },
+                    width: popupWidth,
+                    height: popupHeight
+                }
+            }).dxLookup('instance');
+
+            $lookup.css('margin-top', 0);
+
+            $(lookup.field()).trigger('dxclick');
+
+            let $popup = $('.dx-popup-wrapper');
+
+            assert.roughEqual($popup.find('.dx-overlay-content').outerWidth(), popupWidth, 3, 'popup width like generic');
+            assert.roughEqual($popup.find('.dx-overlay-content').outerHeight(), popupHeight, 3, 'popup height like generic');
+
+            assert.roughEqual($popup.find('.dx-overlay-content').position().top, ($(window).height() - $popup.find('.dx-overlay-content').outerHeight()) / 2, 1, 'popup position of window');
 
             lookup.close();
 
@@ -3306,24 +3647,20 @@ QUnit.module('default options', {
 
             $(lookup.field()).trigger('dxclick');
 
-            const $popover = $('.dx-popup-wrapper');
+            $popup = $('.dx-popup-wrapper');
+            assert.roughEqual($popup.find('.dx-overlay-content').outerWidth(), popupWidth, 3, 'popup width does not change when usePopover true');
+            assert.roughEqual($popup.find('.dx-overlay-content').outerHeight(), popupHeight, 3, 'popup height does not change when usePopover true');
 
-            assert.equal($popover.find('.dx-overlay-content').outerWidth(), $(lookup.field()).outerWidth() + 2, 'popup width match with lookup field width');
-
-            // android6 test fail
-            // assert.roughEqual($popover.find('.dx-overlay-content').outerHeight(), $('.dx-list-item').height() * 5 + 2, 3, 'popup height auto if usePopover true');
-
-            assert.roughEqual($popover.find('.dx-overlay-content').eq(0).position().top, $(lookup.field()).outerHeight() + 8, 2, 'popover position of lookup field with body padding 8px');
+            assert.roughEqual($popup.find('.dx-overlay-content').position().top, ($(window).height() - $popup.find('.dx-overlay-content').outerHeight()) / 2, 1, 'popup position does not change when usePopover true');
 
             lookup.close();
 
-            lookup.option('itemCenteringEnabled', true);
+            lookup.option('dropDownOptions.position', 'top');
 
             $(lookup.field()).trigger('dxclick');
 
             $popup = $('.dx-popup-wrapper');
-
-            assert.roughEqual($popup.find('.dx-overlay-content').position().top, -3.5, 1, 'popup position if option is false');
+            assert.roughEqual($popup.find('.dx-overlay-content').position().top, 0, 1, 'popup position of window after change position more');
 
             lookup.close();
         } finally {
@@ -3333,7 +3670,7 @@ QUnit.module('default options', {
     });
 
 
-    QUnit.test('Check itemCenteringEnabled option for Generic theme', function(assert) {
+    QUnit.test('Check dropDownCentered option for Generic theme', function(assert) {
         const $lookup = $('<div>').prependTo('body');
 
         try {
@@ -3341,7 +3678,7 @@ QUnit.module('default options', {
             const lookup = $lookup.dxLookup({ dataSource: ['blue', 'orange', 'lime', 'purple', 'green'], value: 'blue' }).dxLookup('instance');
 
             lookup.option('usePopover', true);
-            lookup.option('itemCenteringEnabled', true);
+            lookup.option('dropDownCentered', true);
 
             $(lookup.field()).trigger('dxclick');
 
@@ -3372,8 +3709,10 @@ QUnit.module('default options', {
         Lookup.defaultOptions({
             options: {
                 usePopover: true,
-                fullScreen: false,
-                popupWidth: defaultWidth
+                dropDownOptions: {
+                    fullScreen: false,
+                    width: defaultWidth
+                }
             }
         });
         const $lookup = $('<div>').prependTo('body');
@@ -3455,6 +3794,89 @@ QUnit.module('Events', {
         assert.ok(scrollStub.notCalled, 'onScroll event handler detached');
     });
 
+    QUnit.test('onPageLoading handler should be passed to the list', function(assert) {
+        assert.expect(1);
+
+        const data = [1, 2, 3];
+
+        $('#lookup').dxLookup({
+            deferRendering: false,
+            dataSource: {
+                store: data,
+                paginate: true,
+                pageSize: 40
+            },
+            onPageLoading: (e) => {
+                assert.ok(true, 'onPageLoading is fired');
+            }
+        });
+
+        getList().option('onPageLoading')();
+    });
+
+    QUnit.test('onPageLoading handler should be passed to the list - subscription by "on" method', function(assert) {
+        assert.expect(1);
+
+        const data = [1, 2, 3];
+
+        const instance = $('#lookup').dxLookup({
+            deferRendering: false,
+            dataSource: {
+                store: data,
+                paginate: true,
+                pageSize: 40
+            }
+        }).dxLookup('instance');
+
+        instance.on('pageLoading', (e) => {
+            assert.ok(true, 'onPageLoading is fired');
+        });
+
+        getList().option('onPageLoading')();
+    });
+
+    QUnit.test('onPullRefresh handler should be passed to the list', function(assert) {
+        assert.expect(1);
+
+        const data = [1, 2, 3];
+
+        $('#lookup').dxLookup({
+            deferRendering: false,
+            dataSource: {
+                store: data,
+                paginate: true,
+                pageSize: 1
+            },
+            onPullRefresh: (e) => {
+                assert.ok(true, 'onPullRefresh is fired');
+            }
+        });
+
+        getList().option('onPullRefresh')();
+    });
+
+    QUnit.test('onPullRefresh handler should be passed to the list - subscription by "on" method', function(assert) {
+        assert.expect(1);
+
+        const data = [1, 2, 3];
+
+        const instance = $('#lookup').dxLookup({
+            deferRendering: false,
+            dataSource: {
+                store: data,
+                paginate: true,
+                pageSize: 1
+            },
+            pullRefreshEnabled: true
+        }).dxLookup('instance');
+
+        instance.on('pullRefresh', (e) => {
+            assert.ok(true, 'onPullRefresh is fired');
+        });
+
+        getList().option('onPullRefresh')();
+    });
+
     QUnit.test('change "onScroll" handler runtime', function(assert) {
         const initialScrollStub = sinon.stub();
         const newScrollStub = sinon.stub();
@@ -3467,5 +3889,244 @@ QUnit.module('Events', {
 
         assert.ok(initialScrollStub.notCalled, 'initial handled does not invoked');
         assert.ok(newScrollStub.calledOnce, 'onScroll event handled');
+    });
+});
+
+QUnit.module('onContentReady', {
+    beforeEach: function() {
+        fx.off = true;
+        executeAsyncMock.setup();
+        this.clock = sinon.useFakeTimers();
+    },
+    afterEach: function() {
+        executeAsyncMock.teardown();
+        this.clock.restore();
+        fx.off = false;
+    }
+}, () => {
+    QUnit.test('Basic contentReady usage - subscription by "on" method', function(assert) {
+        const contentReadyHandler = sinon.spy();
+        const load = $.Deferred();
+        const items = [1, 2, 3];
+
+        const instance = $('#lookup').dxLookup({
+            dataSource: {
+                load: function() {
+                    return load.promise();
+                }
+            },
+            deferRendering: true,
+            searchTimeout: 0,
+            'dropDownOptions.animation': {},
+            cleanSearchOnOpening: false
+        }).dxLookup('instance');
+        instance.on('contentReady', contentReadyHandler);
+
+        instance.open();
+        assert.ok(contentReadyHandler.calledOnce, 'onContentReady is fired after list rendering');
+
+        load.resolve(items);
+        assert.strictEqual(contentReadyHandler.callCount, 2, 'onContentReady is fired after dataSource load');
+
+        instance.close();
+        instance.open();
+
+        assert.strictEqual(contentReadyHandler.callCount, 2, 'onContentReady is not fired after second popup showing');
+
+        instance._searchBox.option('value', '2');
+
+        assert.strictEqual(contentReadyHandler.callCount, 3, 'onContentReady is fired after search');
+
+        instance.close();
+        assert.strictEqual(contentReadyHandler.callCount, 3, 'onContentReady is not fired after popup with search results hiding');
+
+        instance.open();
+        assert.strictEqual(contentReadyHandler.callCount, 3, 'onContentReady is not fired after popup with search results showing');
+    });
+
+    QUnit.skip('onContentReady should be fired after input rendering when deferRendering=true', function(assert) {
+        assert.expect(2);
+
+        $('#lookup').dxLookup({
+            onContentReady: (e) => {
+                assert.ok(true, 'contentReady is fired after input rendering');
+                assert.strictEqual(e.component._$field.get(0), $('.dx-lookup-field').get(0), 'input is rendered');
+            },
+            deferRendering: true
+        });
+    });
+
+    QUnit.test('onContentReady should be fired after list rendering when deferRendering=true', function(assert) {
+        assert.expect(2);
+
+        const instance = $('#lookup').dxLookup({
+            deferRendering: true
+        }).dxLookup('instance');
+
+        instance.option('onContentReady', () => {
+            assert.ok(true, 'contentReady is fired after list rendering');
+            assert.strictEqual(instance._list.NAME, 'dxList', 'list is rendered');
+        });
+
+        instance.open();
+    });
+
+    QUnit.test('onContentReady should be fired after input and list rendering when deferRendering=false', function(assert) {
+        assert.expect(3);
+
+        $('#lookup').dxLookup({
+            onContentReady: (e) => {
+                assert.ok(true, 'contentReady is fired');
+                assert.strictEqual(e.component._$field.get(0), $('.dx-lookup-field').get(0), 'input is rendered');
+                assert.ok(e.component._$list, 'list is rendered');
+            },
+            deferRendering: false
+        });
+    });
+
+    QUnit.test('onContentReady should be fired after new items loading', function(assert) {
+        assert.expect(2);
+
+        const load = $.Deferred();
+        const items = [1, 2, 3];
+
+        const instance = $('#lookup').dxLookup({
+            dataSource: {
+                load: function() {
+                    return load.promise();
+                }
+            },
+            deferRendering: false
+        }).dxLookup('instance');
+
+        instance.option('onContentReady', (e) => {
+            assert.ok(true, 'contentReady is fired');
+            assert.strictEqual(instance._list.option('items').length, 3, 'items is loaded');
+        });
+
+        load.resolve(items);
+    });
+
+    QUnit.test('onContentReady should be fired after items filtering', function(assert) {
+        assert.expect(2);
+
+        const items = [1, 2, 3];
+
+        const instance = $('#lookup').dxLookup({
+            dataSource: items,
+            deferRendering: false,
+            searchTimeout: 0,
+            'dropDownOptions.animation': {},
+            cleanSearchOnOpening: false
+        }).dxLookup('instance');
+
+        instance.option('onContentReady', (e) => {
+            assert.ok(true, 'contentReady is fired');
+            const items = instance._list.$element().find('.dx-list-item');
+            assert.strictEqual(items.length, 1, 'items are filtered');
+        });
+
+        instance._searchBox.option('value', '2');
+    });
+});
+
+QUnit.module('valueChanged handler should receive correct event', {
+    beforeEach: function() {
+        fx.off = true;
+        this.clock = sinon.useFakeTimers();
+
+        this.valueChangedHandler = sinon.stub();
+        const initialOptions = {
+            items: [1, 2, 3],
+            opened: true,
+            onValueChanged: this.valueChangedHandler,
+            searchTimeout: 0,
+            focusStateEnabled: true
+        };
+        this.init = (options) => {
+            this.$element = $('#lookup').dxLookup(options);
+            this.instance = this.$element.dxLookup('instance');
+            this.$input = $(this.instance.content()).find(`.${TEXTEDITOR_INPUT_CLASS}`);
+            this.keyboard = keyboardMock(this.$input);
+            this.$listItems = $(this.instance.content()).find(`.${LIST_ITEM_CLASS}`);
+            this.$firstItem = this.$listItems.eq(0);
+        };
+        this.testProgramChange = (assert) => {
+            this.instance.option('value', 3);
+
+            const callCount = this.valueChangedHandler.callCount;
+            const event = this.valueChangedHandler.getCall(callCount - 1).args[0].event;
+            assert.strictEqual(event, undefined, 'event is undefined');
+        };
+        this.reinit = (options) => {
+            this.instance.dispose();
+            this.init($.extend({}, initialOptions, options));
+        };
+        this.checkEvent = (assert, type, target, key) => {
+            const event = this.valueChangedHandler.getCall(0).args[0].event;
+            assert.strictEqual(event.type, type, 'event type is correct');
+            assert.strictEqual(event.target, target.get(0), 'event target is correct');
+            if(type === 'keydown') {
+                assert.strictEqual(normalizeKeyName(event), normalizeKeyName({ key }), 'event key is correct');
+            }
+        };
+
+        this.init(initialOptions);
+    },
+    afterEach: function() {
+        fx.off = false;
+        this.clock.restore();
+    }
+}, () => {
+    [true, false].forEach(usePopover => {
+        QUnit.module(`when usePopover=${usePopover}`, {
+            beforeEach: function() {
+                this.reinit({ usePopover });
+            }
+        }, () => {
+            QUnit.test('on runtime change', function(assert) {
+                this.testProgramChange(assert);
+            });
+
+            QUnit.test('on click on item', function(assert) {
+                this.$firstItem.trigger('dxclick');
+
+                this.checkEvent(assert, 'dxclick', this.$firstItem);
+                this.testProgramChange(assert);
+            });
+
+            ['enter', 'space'].forEach(key => {
+                QUnit.testInActiveWindow(`on item selecting using ${key}`, function(assert) {
+                    this.$input.trigger('focusin');
+                    this.keyboard
+                        .press('down')
+                        .press(key);
+
+                    this.checkEvent(assert, 'keydown', this.$firstItem, key);
+                    this.testProgramChange(assert);
+                });
+            });
+
+            QUnit.test('on click on clear button', function(assert) {
+                this.reinit({ showClearButton: true, value: 1 });
+                const $clearButton = $(this.instance.content()).parent().find(`.dx-button.${CLEAR_BUTTON_CLASS}`);
+
+                $clearButton.trigger('dxclick');
+
+                this.checkEvent(assert, 'dxclick', $clearButton);
+                this.testProgramChange(assert);
+            });
+
+            QUnit.test('on click on apply button if applyValueMode=useButtons', function(assert) {
+                this.reinit({ applyValueMode: 'useButtons' });
+                const $applyButton = $(this.instance.content()).parent().find(`.dx-button.${APPLY_BUTTON_CLASS}`);
+
+                this.$firstItem.trigger('dxclick');
+                $applyButton.trigger('dxclick');
+
+                this.checkEvent(assert, 'dxclick', $applyButton);
+                this.testProgramChange(assert);
+            });
+        });
     });
 });

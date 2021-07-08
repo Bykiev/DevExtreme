@@ -156,26 +156,56 @@ QUnit.module('Drawer behavior', () => {
         assert.equal(count, 0, 'callback not fired at animation start');
     });
 
-    QUnit.test('dxresize event should be fired for content at the end of animation', function(assert) {
-        const $element = $('#drawer').dxDrawer({
-            opened: false
-        });
+    QUnit.test('Check dxresize event: opened:false,animationEnabled:true -> drawer.toggle()', function(assert) {
+        const done = assert.async();
+        const drawer = $('#drawer').dxDrawer({
+            opened: false,
+            animationEnabled: true,
+            animationDuration: 1,
+            width: 100,
+            height: 50,
+            template: () => $('<div style="width: 10px; height: 10px; background-color: red"></div>')
+        }).dxDrawer('instance');
 
-        const instance = $element.dxDrawer('instance');
+        const triggerResizeEventInitial = domUtils.triggerResizeEvent;
+
+        domUtils.triggerResizeEvent = ($element) => {
+            assert.ok(true, 'resize event call is expected');
+            assert.equal($element, drawer.viewContent(), 'ViewContent element is expected');
+            const rect = $(drawer.viewContent())[0].getBoundingClientRect();
+            assert.strictEqual(rect.width, 90, 'ViewContent element width');
+            assert.strictEqual(rect.height, 50, 'ViewContent element height');
+
+            domUtils.triggerResizeEvent = triggerResizeEventInitial;
+            done();
+        };
+
+        drawer.toggle();
+    });
+
+    QUnit.test('Check dxresize event: opened:false,animationEnabled:false -> drawer.toggle()', function(assert) {
+        const drawer = $('#drawer').dxDrawer({
+            opened: false,
+            animationEnabled: false,
+            width: 100,
+            height: 50,
+            template: () => $('<div style="width: 10px; height: 10px; background-color: red"></div>')
+        }).dxDrawer('instance');
+
         const triggerFunction = domUtils.triggerResizeEvent;
-        assert.expect(2);
 
         try {
-            fx.off = true;
             domUtils.triggerResizeEvent = ($element) => {
-                assert.ok(true, 'event was triggered');
-                assert.equal($element, instance.viewContent(), 'Event was triggered for right element');
+                assert.ok(true, 'resize event call is expected');
+                assert.equal($element, drawer.viewContent(), 'ViewContent element is expected');
+
+                const rect = $(drawer.viewContent())[0].getBoundingClientRect();
+                assert.strictEqual(rect.width, 90, 'ViewContent element width');
+                assert.strictEqual(rect.height, 50, 'ViewContent element height');
             };
 
-            instance.toggle();
-
+            drawer.toggle();
         } finally {
-            fx.off = false;
             domUtils.triggerResizeEvent = triggerFunction;
         }
     });
@@ -747,11 +777,21 @@ QUnit.module('Drawer behavior', () => {
 
         clock.tick(100);
         const $panel = $('#drawer').find(`.${DRAWER_PANEL_CONTENT_CLASS}`);
-        const $shader = $('#drawer').find(`.${DRAWER_SHADER_CLASS}`);
 
-        assert.strictEqual($panel.css('zIndex'), '2001', 'panel.zIndex');
-        assert.strictEqual($shader.css('zIndex'), '2000', 'shader.zIndex');
+        assert.equal($panel.css('zIndex'), 1501, 'panel has correct zIndex');
         clock.restore();
+    });
+
+    QUnit.test('shader should have correct zIndex in overlap mode', function(assert) {
+        const $element = $('#drawer').dxDrawer({
+            opened: true,
+            openedStateMode: 'overlap',
+            shading: true
+        });
+
+        const $shader = $element.find('.' + DRAWER_SHADER_CLASS);
+
+        assert.equal($shader.css('zIndex'), 1500, 'shader has correct zIndex');
     });
 
     QUnit.test('drawer panel should have correct margin when async template is used', function(assert) {
@@ -804,6 +844,61 @@ QUnit.module('Drawer behavior', () => {
 
         assert.equal(instance.calcTargetPosition(), 'left');
     });
+
+    /* TODO: cannot test in this way because each test requires additional time when tests are started in two 'iframe' (chrome): 700ms instead of 15ms.
+
+    ['shrink', 'push', 'overlap'].forEach(openedStateMode => {
+        ['left', 'top', 'right', 'bottom'].forEach(position => {
+            ['slide', 'expand'].forEach(revealMode => {
+                [true, false].forEach(shading => {
+                    [undefined, 5].forEach(minSize => {
+                        [true, false].forEach(animationEnabled => {
+
+                            QUnit.__test(`dxResize event: {opened: false} -> {opened: true} for {${openedStateMode}, ${revealMode}, ${position}, shading: ${shading}, minSize: ${minSize}, animation: ${animationEnabled}}`, function(assert) {
+                                const done = assert.async();
+                                const triggerResizeEventInitial = domUtils.triggerResizeEvent;
+                                let resizeCallCount = 0;
+
+                                const drawer = $('#drawer').dxDrawer({
+                                    animationDuration: 1,
+                                    width: 100,
+                                    height: 50,
+                                    template: () => $('<div style="width: 10px; height: 10px; background-color: red"></div>'),
+                                    opened: false,
+                                    animationEnabled: animationEnabled,
+                                    openedStateMode: openedStateMode,
+                                    position: position,
+                                    revealMode: revealMode,
+                                    shading: shading,
+                                    minSize: minSize
+                                }).dxDrawer('instance');
+
+                                domUtils.triggerResizeEvent = ($element) => {
+                                    resizeCallCount++;
+                                    assert.strictEqual(resizeCallCount, 1, 'resize event should be triggered once');
+                                    assert.equal($element, drawer.viewContent(), 'ViewContent element is expected');
+
+                                    const sizeChange = (['push', 'overlap'].indexOf(openedStateMode) > -1)
+                                        ? 0 : 10;
+                                    const expectedViewRect = (['top', 'bottom'].indexOf(position) > -1)
+                                        ? { width: 100, height: 50 - sizeChange } : { width: 100 - sizeChange, height: 50 };
+
+                                    const viewRect = $(drawer.viewContent())[0].getBoundingClientRect();
+                                    assert.strictEqual(viewRect.width, expectedViewRect.width, 'ViewContent width');
+                                    assert.strictEqual(viewRect.height, expectedViewRect.height, 'ViewContent height');
+
+                                    domUtils.triggerResizeEvent = triggerResizeEventInitial;
+                                    done();
+                                };
+
+                                drawer.toggle();
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    });*/
 });
 
 QUnit.module('Drawer view template', () => {
@@ -926,7 +1021,6 @@ QUnit.module('Animation', {
         });
 
         const drawer = $drawer.dxDrawer('instance');
-
 
         drawer.option('animationDuration', 300);
 
@@ -1150,14 +1244,23 @@ QUnit.module('Rtl', () => {
     });
 });
 
-QUnit.module('CloseOnOutsideClick', () => {
+QUnit.module('CloseOnOutsideClick', {
+    beforeEach: function() {
+        this.clock = sinon.useFakeTimers();
+    },
+    afterEach: function() {
+        this.clock.restore();
+        this.clock = undefined;
+    }
+}, () => {
     QUnit.test('drawer should be hidden after click on content', function(assert) {
+        const clock = sinon.useFakeTimers();
         const drawer = $('#drawer').dxDrawer({
             closeOnOutsideClick: false,
             opened: true,
-            shading: true
-        })
-            .dxDrawer('instance');
+            shading: true,
+            animationDuration: 0
+        }).dxDrawer('instance');
         const $content = drawer.viewContent();
 
         $($content).trigger('dxclick');
@@ -1165,7 +1268,9 @@ QUnit.module('CloseOnOutsideClick', () => {
         drawer.option('closeOnOutsideClick', true);
 
         const $shader = drawer.$element().find('.' + DRAWER_SHADER_CLASS);
+
         $($content).trigger('dxclick');
+        clock.tick();
 
         assert.equal(drawer.option('opened'), false, 'drawer is hidden');
         assert.ok($shader.is(':hidden'), 'shader is hidden');

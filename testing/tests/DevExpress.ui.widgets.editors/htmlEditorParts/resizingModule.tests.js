@@ -18,6 +18,8 @@ const BORDER_PADDING_WIDTH = 2;
 
 const moduleConfig = {
     beforeEach: function() {
+        this.clock = sinon.useFakeTimers();
+
         this.$element = $('#htmlEditor').css({ position: 'relative', margin: '10px' });
         this.$image = $('<img>').attr({
             width: IMAGE_SIZE,
@@ -26,12 +28,20 @@ const moduleConfig = {
         }).appendTo(this.$element);
         this.$div = $('<div>').appendTo(this.$element);
 
+        this.selectedRange = { index: 0, length: 0 };
+
         this.quillMock = {
-            root: this.$element.get(0)
+            root: this.$element.get(0),
+            on: () => {},
+            off: () => {},
+            getSelection: () => this.selectedRange,
+            setSelection: (index, length) => { this.selectedRange = { index, length }; }
         };
 
         this.options = {
             editorInstance: {
+                on: () => {},
+                off: () => {},
                 $element: () => this.$element,
                 _createComponent: ($element, widget, options) => new widget($element, options),
                 _getQuillContainer: () => this.$element
@@ -46,6 +56,9 @@ const moduleConfig = {
             this.showFrameSpy = sinon.spy(instance, 'showFrame');
             this.hideFrameSpy = sinon.spy(instance, 'hideFrame');
         };
+    },
+    afterEach: function() {
+        this.clock.restore();
     }
 };
 
@@ -299,6 +312,19 @@ module('Resizing module', moduleConfig, () => {
         assert.strictEqual(frameTop + BORDER_PADDING_WIDTH, imageTop, 'Frame positioned correctly by the top');
     });
 
+    test('widget should not fire focusout event on resize frame click (T930996)', function(assert) {
+        this.options.enabled = true;
+        new Resizing(this.quillMock, this.options);
+        const $resizeFrame = this.$element.find(`.${RESIZE_FRAME_CLASS}`);
+
+        this.$element.on('mousedown', (e) => {
+            assert.ok(e.isDefaultPrevented(), 'Default prevented');
+        });
+
+        $resizeFrame
+            .trigger('mousedown');
+    });
+
     test('resize frame should have specific class on mobile devices', function(assert) {
         const currentDevice = devices.current();
 
@@ -325,5 +351,26 @@ module('Resizing module', moduleConfig, () => {
         assert.notOk($resizeFrame.hasClass(DX_TOUCH_DEVICE_CLASS), 'frame doesn\'t have specific class');
 
         devices.current(currentDevice);
+    });
+
+    test('module should set a default selection in case editor was not focused yet', function(assert) {
+        this.options.enabled = true;
+        this.selectedRange = null;
+        new Resizing(this.quillMock, this.options);
+
+        this.$image.trigger(clickEvent);
+
+        assert.deepEqual(this.selectedRange, { index: 0, length: 0 }, 'editor has an default range');
+    });
+
+    test('module should keep actual range', function(assert) {
+        const actualRange = { index: 5, length: 0 };
+        this.options.enabled = true;
+        this.selectedRange = actualRange;
+        new Resizing(this.quillMock, this.options);
+
+        this.$image.trigger(clickEvent);
+
+        assert.deepEqual(this.selectedRange, actualRange, 'editor has an actual range');
     });
 });

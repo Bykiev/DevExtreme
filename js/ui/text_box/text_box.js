@@ -122,7 +122,8 @@ const TextBox = TextEditor.inherit({
 
     _onKeyDownCutOffHandler: function(e) {
         const actualMaxLength = this._getMaxLength();
-        if(actualMaxLength) {
+
+        if(actualMaxLength && !e.ctrlKey && !this._hasSelection()) {
             const $input = $(e.target);
             const key = eventUtils.normalizeKeyName(e);
 

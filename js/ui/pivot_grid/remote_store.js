@@ -10,6 +10,7 @@ import { getFiltersByPath,
     discoverObjectFields,
     setDefaultFieldValueFormatting } from './ui.pivot_grid.utils';
 import { deserializeDate } from '../../core/utils/date_serialization';
+import { normalizeLoadResult } from '../../data/data_source/utils';
 
 function createGroupingOptions(dimensionOptions, useSortOrder) {
     const groupingOptions = [];
@@ -348,7 +349,10 @@ function getExpandedPathSliceFilter(options, dimensionName, level, firstCollapse
         each(paths, function(_, path) {
             path = path.slice(startSliceIndex, level);
             if(index < path.length) {
-                filterValues.push(path[index]);
+                const filterValue = path[index];
+                if(filterValues.indexOf(filterValue) === -1) {
+                    filterValues.push(filterValue);
+                }
             }
         });
 
@@ -476,7 +480,8 @@ module.exports = Class.inherit((function() {
                 skip: 0,
                 take: 20
             }).done(function(data) {
-                d.resolve(discoverObjectFields(data, fields));
+                const normalizedArguments = normalizeLoadResult(data);
+                d.resolve(discoverObjectFields(normalizedArguments.data, fields));
             }).fail(d.reject);
 
             return d;
@@ -492,9 +497,7 @@ module.exports = Class.inherit((function() {
             const result = {
                 rows: [],
                 columns: [],
-                values: [
-                    [[]]
-                ],
+                values: [],
                 grandTotalRowIndex: 0,
                 grandTotalColumnIndex: 0,
 
@@ -520,7 +523,8 @@ module.exports = Class.inherit((function() {
                 const args = deferreds.length > 1 ? arguments : [arguments];
 
                 each(args, function(index, argument) {
-                    parseResult(argument[0], argument[1], requestsData[index], result);
+                    const normalizedArguments = normalizeLoadResult(argument[0], argument[1]);
+                    parseResult(normalizedArguments.data, normalizedArguments.extra, requestsData[index], result);
                 });
 
                 d.resolve({

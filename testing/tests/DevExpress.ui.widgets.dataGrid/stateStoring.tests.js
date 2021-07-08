@@ -1496,52 +1496,6 @@ QUnit.module('State Storing with real controllers', {
         }
     });
 
-    // T643374
-    QUnit.test('ScrollTop should be correct after loading pageIndex from state', function(assert) {
-    // arrange
-        this.clock.restore();
-
-        const that = this;
-        const done = assert.async();
-        const $testElement = $('#container').height(60);
-
-        that.$element = function() {
-            return $testElement;
-        };
-
-        that.setupDataGridModules({
-            stateStoring: {
-                enabled: true,
-                type: 'custom',
-                customLoad: function() {
-                    return { pageIndex: 3 };
-                },
-                customSave: function() {
-                }
-            },
-            scrolling: {
-                mode: 'virtual'
-            },
-            loadingTimeout: null,
-            dataSource: {
-                pageSize: 2,
-                store: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }, { id: 6 }, { id: 7 }, { id: 8 }, { id: 9 }, { id: 10 }]
-            }
-        });
-
-        // act
-        that.gridView.render($testElement);
-        that.gridView.update();
-
-        setTimeout(function() {
-        // assert
-            const scrollTop = that.getScrollable().scrollTop();
-            assert.ok(scrollTop > 0, 'scrollTop');
-            assert.ok($testElement.find('.dx-virtual-row').first().children().first().height() <= scrollTop, 'scrollTop should be less than or equal to virtual row height');
-            done();
-        });
-    });
-
     QUnit.test('Load focusedRowKey state', function(assert) {
     // arrange, act
         this.setupDataGridModules({
@@ -1554,6 +1508,34 @@ QUnit.module('State Storing with real controllers', {
                 customSave: function() {
                 }
             },
+            focusedRowEnabled: true,
+            loadingTimeout: null,
+            dataSource: {
+                store: {
+                    type: 'array',
+                    data: [{ id: 1 }, { id: 2 }, { id: 3 }],
+                    key: 'id'
+                }
+            }
+        });
+
+        // assert
+        assert.strictEqual(this.option('focusedRowKey'), 2);
+    });
+
+    QUnit.test('The focusedRowKey option shouldnt reset if focusedRowKey undefined in state (T968279)', function(assert) {
+        // arrange, act
+        this.setupDataGridModules({
+            stateStoring: {
+                enabled: true,
+                type: 'custom',
+                customLoad: function() {
+                    return { };
+                },
+                customSave: function() {
+                }
+            },
+            focusedRowKey: 2,
             focusedRowEnabled: true,
             loadingTimeout: null,
             dataSource: {
@@ -1702,6 +1684,35 @@ QUnit.module('State Storing with real controllers', {
 
         // assert
         assert.strictEqual(customSaveCallCount, 0, 'customSave is not fired');
+    });
+
+    QUnit.test('searchPanel.text should not be ignored (T887758)', function(assert) {
+        // arrange
+        const customSave = sinon.spy();
+
+        this.setupDataGridModules({
+            dataSource: [{ id: 1 }, { id: 2 }],
+            searchPanel: {
+                visible: true,
+                text: '1'
+            },
+            stateStoring: {
+                enabled: true,
+                type: 'custom',
+                customLoad: function() {
+                    return null;
+                },
+                customSave
+            },
+        });
+
+        this.clock.tick(2000);
+
+        // assert
+        assert.ok(customSave.calledOnce, 'customSave is called once');
+        assert.strictEqual(customSave.getCall(0).args[0].searchText, '1', 'customSave is called with the searchPanel.text initial value');
+        assert.strictEqual(this.option('searchPanel.text'), '1', 'searchPanel.text equals its initial value');
+        assert.equal(this.dataController.items().length, 1);
     });
 });
 

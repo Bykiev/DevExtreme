@@ -417,6 +417,32 @@ QUnit.test('page index change', function(assert) {
 
 });
 
+QUnit.test('save custom field of groups after mapping', function(assert) {
+    const source = new DataSource({
+        store: [
+            {
+                'key': 1,
+                'field': 'value 1'
+            },
+            {
+                'key': 1,
+                'field': 'value 2'
+            }
+        ],
+        onCustomizeLoadResult: function(loadResult) {
+            loadResult.data[0].customField = true;
+        },
+        map: item => {
+            return { ...item };
+        },
+        group: 'key'
+    });
+
+    source.load();
+
+    assert.ok(source.items()[0].customField);
+});
+
 QUnit.test('paginate option', function(assert) {
     const data = [];
 
@@ -1975,6 +2001,77 @@ QUnit.module('live update', {
         ]);
 
         assert.deepEqual(this.array[2].text, 'updated');
+    });
+
+    QUnit.test('push after adding items via array directly and via store.insert', function(assert) {
+        const store = this.initPlainDataSource().store();
+
+        store.push([
+            { type: 'update', key: 1, data: { text: 'updated' } }
+        ]);
+        this.array.push({ id: 3, text: 'test 3' });
+        store.insert({ key: 4, text: 'test 4' });
+
+        store.push([
+            { type: 'update', key: 3, data: { text: 'updated' } }
+        ]);
+
+        assert.deepEqual(this.array[2].text, 'updated');
+    });
+
+    QUnit.test('second push with type update should use cache', function(assert) {
+        const store = this.initPlainDataSource().store();
+
+        store.push([
+            { type: 'update', key: 1, data: { text: 'updated 1' } }
+        ]);
+
+        const keyOfSpy = sinon.spy(store, 'keyOf');
+
+        store.push([
+            { type: 'update', key: 2, data: { text: 'updated 2' } }
+        ]);
+
+        assert.strictEqual(this.array[0].text, 'updated 1');
+        assert.strictEqual(this.array[1].text, 'updated 2');
+        assert.strictEqual(keyOfSpy.callCount, 0, 'keyOf is not called');
+    });
+
+    QUnit.test('second push with type update should use cache after remove item', function(assert) {
+        const store = this.initPlainDataSource().store();
+
+        store.push([
+            { type: 'remove', key: 1 }
+        ]);
+
+        const keyOfSpy = sinon.spy(store, 'keyOf');
+
+        store.push([
+            { type: 'update', key: 2, data: { text: 'updated 2' } }
+        ]);
+
+        assert.strictEqual(this.array[0].text, 'updated 2');
+        assert.strictEqual(keyOfSpy.callCount, 0, 'keyOf is not called');
+    });
+
+    // T958523
+    QUnit.test('second push with type insert should use cache', function(assert) {
+        const dataSource = this.initPlainDataSource();
+        const store = dataSource.store();
+
+        dataSource.load();
+        store.push([
+            { type: 'insert', data: { id: 3, text: 'new 1' } }
+        ]);
+        const keyOfSpy = sinon.spy(store, 'keyOf');
+
+        store.push([
+            { type: 'insert', data: { id: 4, text: 'new 2' } }
+        ]);
+
+        assert.strictEqual(this.array[3].text, 'new 2', 'new 2 is added to array');
+        assert.strictEqual(dataSource.items()[3].text, 'new 2', 'new 2 is added to dataSource items');
+        assert.strictEqual(keyOfSpy.callCount, 2, '1 for store data + 1 for dataSource items');
     });
 
     QUnit.test('push type=\'insert\' if item is exists', function(assert) {

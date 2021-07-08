@@ -226,12 +226,14 @@ class Diagram extends Widget {
             onSubMenuVisibilityChanging: ({ component }) => this._diagramInstance.updateBarItemsState(component.bar),
             onPointerUp: this._onPanelPointerUp.bind(this),
             export: this.option('export'),
+            container: this.$element(),
             excludeCommands: this._getExcludeCommands(),
+            onInternalCommand: this._onInternalCommand.bind(this),
             onCustomCommand: this._onCustomCommand.bind(this),
             isMobileView: this.isMobileScreenSize()
         };
     }
-    _onCustomCommand(e) {
+    _onInternalCommand(e) {
         switch(e.command) {
             case DiagramCommandsManager.SHOW_TOOLBOX_COMMAND_NAME:
                 if(this._toolbox) {
@@ -243,9 +245,10 @@ class Diagram extends Widget {
                     this._propertiesPanel.toggle();
                 }
                 break;
-            default:
-                this._customCommandAction({ name: e.command });
         }
+    }
+    _onCustomCommand(e) {
+        this._customCommandAction({ name: e.name });
     }
     _renderMainToolbar() {
         const $toolbarWrapper = $('<div>')
@@ -259,7 +262,7 @@ class Diagram extends Widget {
         );
     }
     _isHistoryToolbarVisible() {
-        return this.option('historyToolbar.visible') && !this.option('readOnly') && !this.option('disabled');
+        return this.option('historyToolbar.visible') && !this.isReadOnlyMode();
     }
     _renderHistoryToolbar($parent) {
         const isServerSide = !hasWindow();
@@ -288,7 +291,7 @@ class Diagram extends Widget {
         });
     }
     _isToolboxEnabled() {
-        return this.option('toolbox.visibility') !== 'disabled' && !this.option('readOnly') && !this.option('disabled');
+        return this.option('toolbox.visibility') !== 'disabled' && !this.isReadOnlyMode();
     }
     _isToolboxVisible() {
         return this.option('toolbox.visibility') === 'visible' || (this.option('toolbox.visibility') === 'auto' && !this.isMobileScreenSize());
@@ -346,6 +349,7 @@ class Diagram extends Widget {
 
                 if(this._viewToolbar) {
                     this._viewToolbar.$element().css('opacity', e.visible && this.isMobileScreenSize() ? '0' : '1');
+                    this._viewToolbar.$element().css('pointerEvents', e.visible && this.isMobileScreenSize() ? 'none' : '');
                 }
             },
             onVisibilityChanged: (e) => {
@@ -431,7 +435,7 @@ class Diagram extends Widget {
         });
     }
     _isPropertiesPanelEnabled() {
-        return this.option('propertiesPanel.visibility') !== 'disabled' && !this.option('readOnly') && !this.option('disabled');
+        return this.option('propertiesPanel.visibility') !== 'disabled' && !this.isReadOnlyMode();
     }
     _isPropertiesPanelVisible() {
         return this.option('propertiesPanel.visibility') === 'visible';
@@ -546,6 +550,7 @@ class Diagram extends Widget {
             onItemClick: (itemData) => { return this._onBeforeCommandExecuted(itemData.command); },
             export: this.option('export'),
             excludeCommands: this._getExcludeCommands(),
+            onInternalCommand: this._onInternalCommand.bind(this),
             onCustomCommand: this._onCustomCommand.bind(this)
         });
     }
@@ -663,6 +668,9 @@ class Diagram extends Widget {
         if(this.option('units') !== DIAGRAM_DEFAULT_UNIT) {
             this._updateUnitsState();
         }
+        if(this.isReadOnlyMode()) {
+            this._updateReadOnlyState();
+        }
         if(this.option('pageSize')) {
             if(this.option('pageSize.items')) {
                 this._updatePageSizeItemsState();
@@ -699,9 +707,6 @@ class Diagram extends Widget {
         if(this.option('simpleView')) {
             this._updateSimpleViewState();
         }
-        if(this.option('readOnly') || this.option('disabled')) {
-            this._updateReadOnlyState();
-        }
         if(this.option('zoomLevel') !== DIAGRAM_DEFAULT_ZOOMLEVEL) {
             this._updateZoomLevelState();
         }
@@ -733,6 +738,13 @@ class Diagram extends Widget {
     _executeDiagramCommand(command, parameter) {
         this._diagramInstance.getCommand(command).execute(parameter);
     }
+
+    getNodeDataSource() {
+        return this._nodesOption && this._nodesOption.getDataSource();
+    }
+    getEdgeDataSource() {
+        return this._edgesOption && this._edgesOption.getDataSource();
+    }
     _refreshDataSources() {
         this._beginUpdateDiagram();
         this._refreshNodesDataSource();
@@ -749,6 +761,7 @@ class Diagram extends Widget {
             this._nodesOption.option('dataSource', this.option('nodes.dataSource'));
             this._nodesOption._refreshDataSource();
         }
+        this.option('hasChanges', false);
     }
     _refreshEdgesDataSource() {
         if(this._edgesOption) {
@@ -760,6 +773,7 @@ class Diagram extends Widget {
             this._edgesOption.option('dataSource', this.option('edges.dataSource'));
             this._edgesOption._refreshDataSource();
         }
+        this.option('hasChanges', false);
     }
     _getDiagramData() {
         let value;
@@ -770,6 +784,9 @@ class Diagram extends Widget {
     _setDiagramData(data, keepExistingItems) {
         const { DiagramCommand } = getDiagram();
         this._executeDiagramCommand(DiagramCommand.Import, { data, keepExistingItems });
+    }
+    isReadOnlyMode() {
+        return this.option('readOnly') || this.option('disabled');
     }
 
     _onDataSourceChanged() {
@@ -1149,7 +1166,7 @@ class Diagram extends Widget {
     _onNativeFullscreenChangeHandler() {
         if(!this._inNativeFullscreen()) {
             this._unsubscribeFullscreenNativeChanged();
-            this._onToggleFullScreen(false);
+            this.option('fullScreen', false);
         }
     }
     _onShowContextMenu(x, y, selection) {
@@ -1188,9 +1205,8 @@ class Diagram extends Widget {
     }
     _updateReadOnlyState() {
         const { DiagramCommand } = getDiagram();
-        const readOnly = this.option('readOnly') || this.option('disabled');
+        const readOnly = this.isReadOnlyMode();
         this._executeDiagramCommand(DiagramCommand.ToggleReadOnly, readOnly);
-        this._setToolboxVisible(!readOnly);
     }
     _updateZoomLevelState() {
         let zoomLevel = this.option('zoomLevel.value');
@@ -1840,7 +1856,7 @@ class Diagram extends Widget {
                 /**
                 * @name dxDiagramOptions.customShapes.template
                 * @type template|function
-                * @type_function_param1 container:dxElement
+                * @type_function_param1 container:dxSVGElement
                 * @type_function_param2 data:object
                 * @type_function_param2_field1 item:dxDiagramShape
                 */
@@ -2266,13 +2282,6 @@ class Diagram extends Widget {
             });
         }
     }
-    _setToolboxVisible(visible) {
-        if(this._toolbox) {
-            this._toolbox.option({
-                visible: visible
-            });
-        }
-    }
 
     _optionChanged(args) {
         if(this.optionsUpdateBar.isUpdateLocked()) return;
@@ -2289,6 +2298,7 @@ class Diagram extends Widget {
             case 'readOnly':
             case 'disabled':
                 this._updateReadOnlyState();
+                this._invalidate();
                 break;
             case 'zoomLevel':
                 if(args.fullName === 'zoomLevel' || args.fullName === 'zoomLevel.items') {
@@ -2418,8 +2428,11 @@ class Diagram extends Widget {
                 this._updateDefaultItemProperties();
                 break;
             case 'export':
-                if(this._mainToolbar) {
-                    this._mainToolbar.option('export', args.value);
+                this._toolbars.forEach(toolbar => {
+                    toolbar.option('export', this.option('export'));
+                });
+                if(this._contextMenu) {
+                    this._contextMenu.option('export', this.option('export'));
                 }
                 break;
             case 'hasChanges':

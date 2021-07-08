@@ -102,7 +102,6 @@
     @MATERIAL_GRID_BASE_CELL_FIRST_COLUMN_PADDING +
     @MATERIAL_COMMAND_COLUMN_ADDITIONAL_RIGHT_MARGIN;
 
-@MATERIAL_GRID_BASE_COMMAND_EXPAND_COLUMN_WIDTH: @MATERIAL_BASE_ICON_SIZE;
 @MATERIAL_GRID_BASE_CELL_VERTICAL_PADDING: round((@MATERIAL_GRID_BASE_CELL_HEIGHT - @MATERIAL_GRID_BASE_CELL_LINE_HEIGHT)/2);
 @MATERIAL_GRID_BASE_CELL_PADDING: @MATERIAL_GRID_BASE_CELL_VERTICAL_PADDING @MATERIAL_GRID_BASE_CELL_HORIZONTAL_PADDING;
 
@@ -341,14 +340,16 @@
 
                             margin: 0 @MATERIAL_COMMAND_EDIT_ICON_MARGIN;
                             vertical-align: middle;
+
+                            &:not(.dx-link-icon) {
+                                width: auto;
+                            }
                         }
                     }
                 }
 
                 &.dx-command-expand,
                 .dx-@{widgetName}-group-space {
-                    width: @MATERIAL_GRID_BASE_COMMAND_EXPAND_COLUMN_WIDTH;
-                    min-width: @MATERIAL_GRID_BASE_COMMAND_EXPAND_COLUMN_WIDTH;
                     padding: 0 4px 0 8px;
                     line-height: 0;
                 }
@@ -466,6 +467,19 @@
                 padding-left: 0;
                 padding-top: 0;
                 padding-bottom: 0;
+                margin-top: 0;
+            }
+
+            .dx-tag-container {
+                min-height: @MATERIAL_GRID_BASE_CELL_HEIGHT;
+                padding: 0;
+            }
+
+            &:not(.dx-editor-filled):not(.dx-editor-outlined) {
+                .dx-texteditor-input,
+                .dx-tag-container {
+                    margin-top: 0;
+                }
             }
 
             .dx-texteditor-buttons-container {
@@ -606,10 +620,12 @@
 
     .dx-data-row.dx-state-hover {
         &:not(.dx-selection):not(.dx-row-inserted):not(.dx-row-removed):not(.dx-edit-row):not(.dx-row-focused) {
-            background-color: @datagrid-hover-bg;
-
             > td {
                 color: @datagrid-row-hovered-color;
+
+                &:not(.dx-focused) {
+                    background-color: @datagrid-hover-bg;
+                }
             }
 
             & > .dx-@{widgetName}-readonly .dx-texteditor {
@@ -682,6 +698,10 @@
                         padding-bottom: 12px;
                         vertical-align: bottom;
                         border-right: 1px solid @MATERIAL_GRID_BASE_BORDER_COLOR;
+                    }
+
+                    &:last-child {
+                        border-right: none;
                     }
                 }
             }

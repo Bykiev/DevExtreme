@@ -48,8 +48,16 @@ function createTick(axis, renderer, tickOptions, gridOptions, skippedCategory, s
                 this.labelCoords = axis._getTranslatedValue(value);
             },
             saveCoords() {
+                this._lastStoredCoordinates = {
+                    coords: this._storedCoords,
+                    labelCoords: this._storedLabelsCoords
+                };
                 this._storedCoords = this.coords;
                 this._storedLabelsCoords = this.labelCoords;
+            },
+            resetCoordinates() {
+                this._storedCoords = this._lastStoredCoordinates.coords;
+                this._storedLabelsCoords = this._lastStoredCoordinates.labelCoords;
             },
             drawMark(options) {
                 if(!tickOptions.visible || skippedCategory === value) {
@@ -117,7 +125,7 @@ function createTick(axis, renderer, tickOptions, gridOptions, skippedCategory, s
 
                 if(!labelIsVisible) {
                     if(this.label) {
-                        this.label.remove();
+                        this.removeLabel();
                     }
                     return;
                 }
@@ -181,7 +189,8 @@ function createTick(axis, renderer, tickOptions, gridOptions, skippedCategory, s
                     opacity: 1
                 }).animate({ opacity: 0 }, {
                     partitionDuration: 0.5
-                }).append(axis._axisElementsGroup);
+                }).append(axis._axisElementsGroup).toBackground();
+
                 this.label.append(group);
             },
 

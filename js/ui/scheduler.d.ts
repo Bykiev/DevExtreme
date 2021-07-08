@@ -23,6 +23,7 @@ import {
 import dxDraggable from './draggable';
 
 import dxForm from './form';
+import dxPopup from './popup';
 
 import dxSortable from './sortable';
 
@@ -167,7 +168,7 @@ export interface dxSchedulerOptions extends WidgetOptions<dxScheduler> {
      * @type_function_param1 itemData:object
      * @type_function_param2 itemIndex:number
      * @type_function_param3 contentElement:dxElement
-     * @type_function_return string|Node|jQuery
+     * @type_function_return string|Element|jQuery
      * @deprecated dxSchedulerOptions.appointmentTooltipTemplate
      * @prevFileNamespace DevExpress.ui
      * @public
@@ -285,7 +286,7 @@ export interface dxSchedulerOptions extends WidgetOptions<dxScheduler> {
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    onAppointmentAdded?: ((e: { component?: dxScheduler, element?: dxElement, model?: any, appointmentData?: any, error?: Error }) => any);
+    onAppointmentAdded?: ((e: { component: dxScheduler, element: dxElement, model?: any, appointmentData: any, error?: Error }) => any);
     /**
      * @docid dxSchedulerOptions.onAppointmentAdding
      * @extends Action
@@ -297,7 +298,7 @@ export interface dxSchedulerOptions extends WidgetOptions<dxScheduler> {
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    onAppointmentAdding?: ((e: { component?: dxScheduler, element?: dxElement, model?: any, appointmentData?: any, cancel?: boolean | Promise<boolean> | JQueryPromise<boolean> }) => any);
+    onAppointmentAdding?: ((e: { component: dxScheduler, element: dxElement, model?: any, appointmentData: any, cancel: boolean | Promise<boolean> | JQueryPromise<boolean> }) => any);
     /**
      * @docid dxSchedulerOptions.onAppointmentClick
      * @type function(e)|string
@@ -313,7 +314,7 @@ export interface dxSchedulerOptions extends WidgetOptions<dxScheduler> {
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    onAppointmentClick?: ((e: { component?: dxScheduler, element?: dxElement, model?: any, appointmentData?: any, targetedAppointmentData?: any, appointmentElement?: dxElement, jQueryEvent?: JQueryEventObject, event?: event, cancel?: boolean }) => any) | string;
+    onAppointmentClick?: ((e: { component: dxScheduler, element: dxElement, model?: any, appointmentData: any, targetedAppointmentData?: any, appointmentElement: dxElement, jQueryEvent?: JQueryEventObject, event?: event, cancel: boolean }) => any) | string;
     /**
      * @docid dxSchedulerOptions.onAppointmentContextMenu
      * @type function(e)|string
@@ -328,7 +329,7 @@ export interface dxSchedulerOptions extends WidgetOptions<dxScheduler> {
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    onAppointmentContextMenu?: ((e: { component?: dxScheduler, element?: dxElement, model?: any, appointmentData?: any, targetedAppointmentData?: any, appointmentElement?: dxElement, jQueryEvent?: JQueryEventObject, event?: event }) => any) | string;
+    onAppointmentContextMenu?: ((e: { component: dxScheduler, element: dxElement, model?: any, appointmentData: any, targetedAppointmentData?: any, appointmentElement: dxElement, jQueryEvent?: JQueryEventObject, event?: event }) => any) | string;
     /**
      * @docid dxSchedulerOptions.onAppointmentDblClick
      * @type function(e)|string
@@ -344,7 +345,7 @@ export interface dxSchedulerOptions extends WidgetOptions<dxScheduler> {
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    onAppointmentDblClick?: ((e: { component?: dxScheduler, element?: dxElement, model?: any, appointmentData?: any, targetedAppointmentData?: any, appointmentElement?: dxElement, jQueryEvent?: JQueryEventObject, event?: event, cancel?: boolean }) => any) | string;
+    onAppointmentDblClick?: ((e: { component: dxScheduler, element: dxElement, model?: any, appointmentData: any, targetedAppointmentData?: any, appointmentElement: dxElement, jQueryEvent?: JQueryEventObject, event?: event, cancel: boolean }) => any) | string;
     /**
      * @docid dxSchedulerOptions.onAppointmentDeleted
      * @extends Action
@@ -356,7 +357,7 @@ export interface dxSchedulerOptions extends WidgetOptions<dxScheduler> {
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    onAppointmentDeleted?: ((e: { component?: dxScheduler, element?: dxElement, model?: any, appointmentData?: any, error?: Error }) => any);
+    onAppointmentDeleted?: ((e: { component: dxScheduler, element: dxElement, model: any, appointmentData: any, error?: Error }) => any);
     /**
      * @docid dxSchedulerOptions.onAppointmentDeleting
      * @extends Action
@@ -368,7 +369,7 @@ export interface dxSchedulerOptions extends WidgetOptions<dxScheduler> {
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    onAppointmentDeleting?: ((e: { component?: dxScheduler, element?: dxElement, model?: any, appointmentData?: any, cancel?: boolean | Promise<boolean> | JQueryPromise<boolean> }) => any);
+    onAppointmentDeleting?: ((e: { component: dxScheduler, element: dxElement, model?: any, appointmentData: any, cancel: boolean | Promise<boolean> | JQueryPromise<boolean> }) => any);
     /**
      * @docid dxSchedulerOptions.onAppointmentFormCreated
      * @extends Action
@@ -381,7 +382,7 @@ export interface dxSchedulerOptions extends WidgetOptions<dxScheduler> {
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    onAppointmentFormCreated?: ((e: { component?: dxScheduler, element?: dxElement, model?: any, appointmentData?: any, form?: dxForm }) => any);
+    onAppointmentFormCreated?: ((e: { component: dxScheduler, element: dxElement, model?: any, appointmentData?: any, form: dxForm }) => any);
     /**
      * @docid dxSchedulerOptions.onAppointmentFormOpening
      * @extends Action
@@ -389,25 +390,26 @@ export interface dxSchedulerOptions extends WidgetOptions<dxScheduler> {
      * @type_function_param1 e:object
      * @type_function_param1_field4 appointmentData:object
      * @type_function_param1_field5 form:dxForm
-     * @type_function_param1_field6 cancel:Boolean
+     * @type_function_param1_field6 popup:dxPopup
+     * @type_function_param1_field7 cancel:Boolean
      * @action
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    onAppointmentFormOpening?: ((e: { component?: dxScheduler, element?: dxElement, model?: any, appointmentData?: any, form?: dxForm, cancel?: boolean }) => any);
+    onAppointmentFormOpening?: ((e: { component: dxScheduler, element: dxElement, model?: any, appointmentData?: any, form: dxForm, popup: dxPopup, cancel: boolean }) => any);
     /**
      * @docid dxSchedulerOptions.onAppointmentRendered
      * @extends Action
      * @type function(e)
      * @type_function_param1 e:object
      * @type_function_param1_field4 appointmentData:object
-     * @type_function_param1_field5 targetedAppointmentData:object
+     * @type_function_param1_field5 targetedAppointmentData:object|undefined
      * @type_function_param1_field6 appointmentElement:dxElement
      * @action
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    onAppointmentRendered?: ((e: { component?: dxScheduler, element?: dxElement, model?: any, appointmentData?: any, targetedAppointmentData?: any, appointmentElement?: dxElement }) => any);
+    onAppointmentRendered?: ((e: { component: dxScheduler, element: dxElement, model: any, appointmentData: any, targetedAppointmentData?: any, appointmentElement?: dxElement }) => any);
     /**
      * @docid dxSchedulerOptions.onAppointmentUpdated
      * @extends Action
@@ -419,7 +421,7 @@ export interface dxSchedulerOptions extends WidgetOptions<dxScheduler> {
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    onAppointmentUpdated?: ((e: { component?: dxScheduler, element?: dxElement, model?: any, appointmentData?: any, error?: Error }) => any);
+    onAppointmentUpdated?: ((e: { component: dxScheduler, element: dxElement, model?: any, appointmentData: any, error?: Error }) => any);
     /**
      * @docid dxSchedulerOptions.onAppointmentUpdating
      * @extends Action
@@ -432,7 +434,7 @@ export interface dxSchedulerOptions extends WidgetOptions<dxScheduler> {
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    onAppointmentUpdating?: ((e: { component?: dxScheduler, element?: dxElement, model?: any, oldData?: any, newData?: any, cancel?: boolean | Promise<boolean> | JQueryPromise<boolean> }) => any);
+    onAppointmentUpdating?: ((e: { component: dxScheduler, element: dxElement, model?: any, oldData?: any, newData?: any, cancel?: boolean | Promise<boolean> | JQueryPromise<boolean> }) => any);
     /**
      * @docid dxSchedulerOptions.onCellClick
      * @type function(e)|string
@@ -447,7 +449,7 @@ export interface dxSchedulerOptions extends WidgetOptions<dxScheduler> {
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    onCellClick?: ((e: { component?: dxScheduler, element?: dxElement, model?: any, cellData?: any, cellElement?: dxElement, jQueryEvent?: JQueryEventObject, event?: event, cancel?: boolean }) => any) | string;
+    onCellClick?: ((e: { component: dxScheduler, element: dxElement, model?: any, cellData: any, cellElement: dxElement, jQueryEvent?: JQueryEventObject, event?: event, cancel: boolean }) => any) | string;
     /**
      * @docid dxSchedulerOptions.onCellContextMenu
      * @type function(e)|string
@@ -461,7 +463,7 @@ export interface dxSchedulerOptions extends WidgetOptions<dxScheduler> {
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    onCellContextMenu?: ((e: { component?: dxScheduler, element?: dxElement, model?: any, cellData?: any, cellElement?: dxElement, jQueryEvent?: JQueryEventObject, event?: event }) => any) | string;
+    onCellContextMenu?: ((e: { component: dxScheduler, element: dxElement, model?: any, cellData: any, cellElement: dxElement, jQueryEvent?: JQueryEventObject, event?: event }) => any) | string;
     /**
      * @docid dxSchedulerOptions.recurrenceEditMode
      * @type Enums.SchedulerRecurrenceEditMode
@@ -691,7 +693,7 @@ export default class dxScheduler extends Widget {
      * @docid dxSchedulerMethods.showAppointmentTooltip
      * @publicName showAppointmentTooltip(appointmentData, target, currentAppointmentData)
      * @param1 appointmentData:Object
-     * @param2 target:string|Node|jQuery
+     * @param2 target:string|Element|jQuery
      * @param3 currentAppointmentData:Object|undefined
      * @prevFileNamespace DevExpress.ui
      * @public
@@ -733,11 +735,11 @@ export interface dxSchedulerAppointment extends CollectionWidgetItem {
     disabled?: boolean;
     /**
      * @docid dxSchedulerAppointment.endDate
-     * @type Date
+     * @type Date|string
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    endDate?: Date;
+    endDate?: Date | string;
     /**
      * @docid dxSchedulerAppointment.endDateTimeZone
      * @type String
@@ -768,11 +770,11 @@ export interface dxSchedulerAppointment extends CollectionWidgetItem {
     recurrenceRule?: string;
     /**
      * @docid dxSchedulerAppointment.startDate
-     * @type Date
+     * @type Date|string
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    startDate?: Date;
+    startDate?: Date | string;
     /**
      * @docid dxSchedulerAppointment.startDateTimeZone
      * @type String

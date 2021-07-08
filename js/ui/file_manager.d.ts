@@ -22,6 +22,10 @@ import Widget, {
     WidgetOptions
 } from './widget/ui.widget';
 
+import {
+    template
+} from '../core/templates/template';
+
 export interface dxFileManagerOptions extends WidgetOptions<dxFileManager> {
     /**
      * @docid dxFileManagerOptions.allowedFileExtensions
@@ -97,11 +101,13 @@ export interface dxFileManagerOptions extends WidgetOptions<dxFileManager> {
      * @type_function_param1_field5 itemElement:dxElement
      * @type_function_param1_field6 itemIndex:number
      * @type_function_param1_field7 event:event
+     * @type_function_param1_field8 fileSystemItem:FileSystemItem
+     * @type_function_param1_field9 viewArea:Enums.FileManagerViewArea
      * @action
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    onContextMenuItemClick?: ((e: { component?: dxFileManager, element?: dxElement, model?: any, itemData?: any, itemElement?: dxElement, itemIndex?: number, event?: event }) => any);
+    onContextMenuItemClick?: ((e: { component?: dxFileManager, element?: dxElement, model?: any, itemData?: any, itemElement?: dxElement, itemIndex?: number, event?: event, fileSystemItem?: FileSystemItem, viewArea?: 'navPane' | 'itemView' }) => any);
     /**
      * @docid dxFileManagerOptions.onCurrentDirectoryChanged
      * @extends Action
@@ -188,7 +194,7 @@ export interface dxFileManagerOptions extends WidgetOptions<dxFileManager> {
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    permissions?: { copy?: boolean, create?: boolean, download?: boolean, move?: boolean, remove?: boolean, rename?: boolean, upload?: boolean };
+    permissions?: { copy?: boolean, create?: boolean, download?: boolean, move?: boolean, delete?: boolean, rename?: boolean, upload?: boolean };
     /**
      * @docid dxFileManagerOptions.rootFolderName
      * @type string
@@ -306,6 +312,14 @@ export interface dxFileManagerContextMenuItem extends dxContextMenuItem {
      * @public
      */
     visible?: boolean;
+    /**
+     * @docid dxFileManagerContextMenuItem.template
+     * @type template|function
+     * @type_function_return string|Element|jQuery
+     * @prevFileNamespace DevExpress.ui
+     * @hidden
+     */
+    template?: template | (() => string | Element | JQuery);
 }
 
 export interface dxFileManagerToolbar {
@@ -349,6 +363,29 @@ export interface dxFileManagerToolbarItem extends dxToolbarItem {
      * @public
      */
     visible?: boolean;
+    /**
+     * @docid dxFileManagerToolbarItem.html
+     * @type String
+     * @prevFileNamespace DevExpress.ui
+     * @hidden
+     */
+    html?: string;
+    /**
+     * @docid dxFileManagerToolbarItem.template
+     * @type template|function
+     * @type_function_return string|Element|jQuery
+     * @prevFileNamespace DevExpress.ui
+     * @hidden
+     */
+    template?: template | (() => string | Element | JQuery);
+    /**
+     * @docid dxFileManagerToolbarItem.menuItemTemplate
+     * @type template|function
+     * @type_function_return string|Element|jQuery
+     * @prevFileNamespace DevExpress.ui
+     * @hidden
+     */
+    menuItemTemplate?: template | (() => string | Element | JQuery);
 }
 
 export interface dxFileManagerDetailsColumn {

@@ -8,7 +8,7 @@ import { extend } from '../../core/utils/extend';
 import support from '../../core/utils/support';
 import clickEvent from '../../events/click';
 import messageLocalization from '../../localization/message';
-import { addNamespace } from '../../events/utils';
+import { addNamespace, isCommandKeyPressed } from '../../events/utils';
 import holdEvent from '../../events/hold';
 import Selection from '../selection/selection';
 import { Deferred } from '../../core/utils/deferred';
@@ -79,12 +79,8 @@ exports.SelectionController = gridCore.Controller.inherit((function() {
         const component = options.component;
         const rowsView = component.getView('rowsView');
 
-        if(component.option('renderAsync')) {
-            const selectedRowKeys = component.getSelectedRowKeys();
-
-            if(selectedRowKeys.indexOf(options.row.key) !== -1) {
-                options.value = true;
-            }
+        if(component.option('renderAsync') && !component.option('selection.deferred')) {
+            options.value = component.isRowSelected(options.row.key);
         }
 
         rowsView.renderSelectCheckBoxContainer($(container), options);
@@ -147,7 +143,7 @@ exports.SelectionController = gridCore.Controller.inherit((function() {
                     return item && (item.oldData || item.data || item);
                 },
                 filter: function() {
-                    return dataController.getCombinedFilter();
+                    return dataController.getCombinedFilter(true);
                 },
                 totalCount: function() {
                     return dataController.totalCount();
@@ -582,6 +578,12 @@ module.exports = {
                         this._changes = [{ changeType: 'updateSelection', itemIndexes }];
                     }
                     this.callBase.apply(this, arguments);
+                },
+
+                push: function(changes) {
+                    this.callBase.apply(this, arguments);
+                    const removedKeys = changes.filter(change => change.type === 'remove').map(change => change.key);
+                    removedKeys.length && this.getController('selection').deselectRows(removedKeys);
                 }
             },
             contextMenu: {
@@ -608,7 +610,10 @@ module.exports = {
                     const $editor = $element && $element.find('.' + SELECT_CHECKBOX_CLASS);
 
                     if($element && $editor.length && that.option('selection.mode') === 'multiple') {
-                        $editor.dxCheckBox('instance').option('value', that.getController('selection').isSelectAll());
+                        $editor.dxCheckBox('instance').option({
+                            visible: !that.getController('data').isEmpty(),
+                            value: that.getController('selection').isSelectAll(),
+                        });
                     }
                 },
                 _handleDataChanged: function(e) {
@@ -621,6 +626,7 @@ module.exports = {
                 _renderSelectAllCheckBox: function($container, column) {
                     const that = this;
                     const selectionController = that.getController('selection');
+                    const isEmptyData = that.getController('data').isEmpty();
 
                     const groupElement = $('<div>')
                         .appendTo($container)
@@ -633,7 +639,7 @@ module.exports = {
                         dataType: 'boolean',
                         value: selectionController.isSelectAll(),
                         editorOptions: {
-                            visible: that.option('selection.allowSelectAll') || selectionController.isSelectAll() !== false
+                            visible: !isEmptyData && (that.option('selection.allowSelectAll') || selectionController.isSelectAll() !== false)
                         },
                         tabIndex: that.option('useLegacyKeyboardNavigation') ? -1 : (that.option('tabIndex') || 0),
                         setValue: function(value, e) {
@@ -693,8 +699,8 @@ module.exports = {
                         lookup: null,
                         value: options.value,
                         setValue: function(value, e) {
-                            if(e && e.event && e.event.type === 'keydown') {
-                                eventsEngine.trigger(container, clickEvent.name, e);
+                            if(e?.event?.type === 'keydown') {
+                                eventsEngine.trigger(e.element, clickEvent.name, e);
                             }
                         },
                         row: options.row
@@ -803,7 +809,7 @@ module.exports = {
                     if(!that.isClickableElement($(dxEvent.target))) {
                         if(!isSelectionDisabled && (that.option(SELECTION_MODE) !== 'multiple' || that.option(SHOW_CHECKBOXES_MODE) !== 'always')) {
                             if(that.getController('selection').changeItemSelection(e.rowIndex, {
-                                control: dxEvent.ctrlKey || dxEvent.metaKey,
+                                control: isCommandKeyPressed(dxEvent),
                                 shift: dxEvent.shiftKey
                             })) {
                                 dxEvent.preventDefault();

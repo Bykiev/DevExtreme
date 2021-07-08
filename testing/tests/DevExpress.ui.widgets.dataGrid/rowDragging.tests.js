@@ -298,8 +298,8 @@ QUnit.module('Drag and Drop rows', moduleConfig, () => {
         assert.ok($draggableElement.find('.dx-data-row').children().first().hasClass('my-cell'), 'cell with custom class');
     });
 
-    QUnit.test('\'rowDragging\' option changing', function(assert) {
-    // arrange
+    QUnit.test('\'rowDragging.allowReordering\' option changing (false -> true)', function(assert) {
+        // arrange
         const $testElement = $('#container');
 
         this.options.rowDragging = {
@@ -331,6 +331,43 @@ QUnit.module('Drag and Drop rows', moduleConfig, () => {
         // assert
         assert.strictEqual($('body').children('.dx-sortable-placeholder').length, 1, 'there is placeholder');
         assert.strictEqual($('body').children('.dx-sortable-dragging').length, 1, 'there is dragging element');
+    });
+
+    // T972509
+    QUnit.test('\'rowDragging.allowReordering\' option changing (true -> false)', function(assert) {
+        // arrange
+        const $testElement = $('#container');
+
+        this.options.rowDragging = {
+            allowReordering: true
+        };
+
+        const rowsView = this.createRowsView();
+        rowsView.render($testElement);
+
+        // act
+        const pointer = pointerMock(rowsView.getRowElement(0)).start().down().move(0, 70);
+
+        // assert
+        assert.strictEqual($('body').children('.dx-sortable-placeholder').length, 1, 'there is placeholder');
+        assert.strictEqual($('body').children('.dx-sortable-dragging').length, 1, 'there is dragging element');
+
+        // arrange
+        pointer.up();
+
+        this.options.rowDragging = {
+            allowReordering: false
+        };
+
+        rowsView.optionChanged({ name: 'rowDragging' });
+
+        // act
+        pointerMock(rowsView.getRowElement(0)).start().down().move(0, 70);
+
+        // assert
+        assert.strictEqual($('body').children('.dx-sortable-placeholder').length, 0, 'there is not placeholder');
+        assert.strictEqual($('body').children('.dx-sortable-dragging').length, 0, 'there is not dragging element');
+        assert.notStrictEqual($(rowsView.getRowElement(0)).children().first().css('cursor'), 'pointer', 'cursor is not pointer');
     });
 
     QUnit.test('Dragging row to the last position - row should be before the freespace row', function(assert) {
@@ -555,6 +592,40 @@ QUnit.module('Drag and Drop rows', moduleConfig, () => {
         assert.strictEqual($fixTable.find('.dx-data-row').children('.dx-pointer-events-none').length, 1, 'fixed table has transparent column');
     });
 
+    [false, true].forEach((isFixedCellDragging) => {
+        QUnit.test(`Tables should be synchronized during ${isFixedCellDragging ? 'fixed' : ''} row dragging if there are fixed columns`, function(assert) {
+            // arrange
+            const $testElement = $('#container');
+
+            this.options.columns[2] = {
+                dataField: 'field3',
+                fixed: true
+            };
+            this.options.rowDragging.dropFeedbackMode = 'push';
+
+            const rowsView = this.createRowsView();
+            rowsView.render($testElement);
+
+            // act
+            pointerMock(rowsView.getCellElement(0, isFixedCellDragging ? 2 : 0)).start().down().move(0, 70);
+
+            // assert
+            const $sortable = $testElement.find('.dx-sortable');
+
+            assert.equal($sortable.length, 2, 'two sortables are rendered');
+
+            const sortableOptions = [
+                $sortable.eq(0).dxSortable('instance').option(),
+                $sortable.eq(1).dxSortable('instance').option(),
+            ];
+
+            assert.equal(sortableOptions[0].fromIndex, 0, 'first sortable fromIndex');
+            assert.equal(sortableOptions[1].fromIndex, 0, 'second sortable fromIndex');
+            assert.equal(sortableOptions[0].toIndex, 2, 'first sortable toIndex');
+            assert.equal(sortableOptions[1].toIndex, 2, 'second sortable toIndex');
+        });
+    });
+
     // T830034
     QUnit.test('Placeholder should not be wider than grid if horizontal scroll exists', function(assert) {
     // arrange
@@ -591,7 +662,7 @@ QUnit.module('Drag and Drop rows', moduleConfig, () => {
         rowsView.render($testElement);
 
         // act
-        pointerMock(rowsView.getCellElement(0, 0)).start().down().move(0, 10).move(0, 5);
+        pointerMock(rowsView.getCellElement(0, 0)).start().down().move(0, 10).move(0, 45);
 
         // assert
         const $placeholder = $('.dx-sortable-placeholder');
@@ -662,6 +733,122 @@ QUnit.module('Drag and Drop rows', moduleConfig, () => {
         assert.ok($placeholderElement.is(':visible'), 'placeholder is visible');
         assert.strictEqual($placeholderElement.offset().top, $(rowsView.getRowElement(4)).offset().top, 'placeholder position');
         assert.strictEqual(onDragChangeSpy.getCall(0).args[0].toIndex, 3, 'toIndex');
+    });
+
+    // T887897
+    ['push', 'indicate'].forEach((dropFeedbackMode) => {
+        QUnit.test(`The dragged row should not be displayed in its original position for a moment after row is dropped (dropFeedbackMode = ${dropFeedbackMode})`, function(assert) {
+            if(browser.msie && dropFeedbackMode === 'push') {
+                assert.ok(true, 'no \'push\' support for msie');
+                return;
+            }
+
+            // arrange
+            const $testElement = $('#container');
+            const items = generateData(10);
+            let d = $.Deferred();
+
+            this.options.dataSource = {
+                load: function() {
+                    return d.promise();
+                }
+            };
+            this.options.rowDragging = {
+                allowReordering: true,
+                dropFeedbackMode: dropFeedbackMode,
+                onReorder: sinon.spy((e) => {
+                    const toIndex = items.indexOf(items[e.toIndex]);
+                    const fromIndex = items.indexOf(e.itemData);
+
+                    items.splice(fromIndex, 1);
+                    items.splice(toIndex, 0, e.itemData);
+                    e.promise = this.dataGrid.refresh();
+                })
+            };
+
+            const rowsView = this.createRowsView();
+            d.resolve(items);
+            d = $.Deferred();
+
+            rowsView.render($testElement);
+
+            // act
+            pointerMock(rowsView.getRowElement(0)).start().down().move(0, 70).up();
+
+            // assert
+            const onReorder = this.options.rowDragging.onReorder;
+            let $rowElement = $(rowsView.getRowElement(0));
+            let $draggableElement = $('body').children('.dx-sortable-dragging');
+
+            assert.strictEqual(onReorder.callCount, 1, 'onReorder called once');
+            assert.strictEqual($draggableElement.length, 1, 'there is dragging element');
+            assert.ok($rowElement.hasClass('dx-sortable-source'), 'source row');
+
+            if(dropFeedbackMode === 'push') {
+                assert.ok($rowElement.hasClass('dx-sortable-source-hidden'), 'source element is hidden');
+            }
+
+            // act
+            d.resolve();
+
+            // assert
+            $draggableElement = $('body').children('.dx-sortable-dragging');
+            $rowElement = $(rowsView.getRowElement(0));
+
+            assert.strictEqual($draggableElement.length, 0, 'there is not dragging element');
+            assert.notOk($rowElement.hasClass('dx-sortable-source'), 'element has not source class');
+            assert.notOk($rowElement.hasClass('dx-sortable-source-hidden'), 'element has not source-hidden class');
+        });
+    });
+
+    // T893965
+    QUnit.test('dropFeedback should be switched to \'indicate\' for msie', function(assert) {
+        // arrange
+        const $testElement = $('#container');
+
+        this.options.rowDragging.dropFeedbackMode = 'push';
+
+        const rowsView = this.createRowsView();
+        rowsView.render($testElement);
+
+        // act
+        const dropFeedbackMode = rowsView._sortable.option('dropFeedbackMode');
+
+        // assert
+        if(browser.msie) {
+            assert.equal(dropFeedbackMode, 'indicate', 'dropFeedback mode was switched');
+        } else {
+            assert.equal(dropFeedbackMode, 'push', 'dropFeedback mode was not switched');
+        }
+    });
+
+    // T893965
+    QUnit.test('dropFeedback should be switched to \'indicate\' for msie if set at runtime', function(assert) {
+        // arrange
+        const $testElement = $('#container');
+
+        this.options.rowDragging = {
+            allowReordering: false
+        };
+
+        const rowsView = this.createRowsView();
+        rowsView.render($testElement);
+
+        // act
+        this.options.rowDragging = {
+            dropFeedbackMode: 'push',
+            allowReordering: true
+        };
+        rowsView.optionChanged({ name: 'rowDragging' });
+
+        const dropFeedbackMode = rowsView._sortable.option('dropFeedbackMode');
+
+        // assert
+        if(browser.msie) {
+            assert.equal(dropFeedbackMode, 'indicate', 'dropFeedback mode was switched');
+        } else {
+            assert.equal(dropFeedbackMode, 'push', 'dropFeedback mode was not switched');
+        }
     });
 });
 

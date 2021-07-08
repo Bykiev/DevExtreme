@@ -13,6 +13,7 @@ const dataSource = (() => {
 const environment = {
     beforeEach: function() {
         this.tooltipHiddenSpy = sinon.spy();
+        this.clock = sinon.useFakeTimers();
     },
     createChart: function(options) {
         const chart = $('#chart').dxChart($.extend(true, {}, {
@@ -40,6 +41,7 @@ const environment = {
     },
     afterEach: function() {
         this.trackerStopHandling && this.trackerStopHandling.restore();
+        this.clock.restore();
     }
 };
 
@@ -2088,7 +2090,6 @@ QUnit.test('Drag. Small chart rendering time on start and big time in the middle
 
     // act
     // drag start
-    chart._lastRenderingTime = 0;
     this.pointer.start({ x: 150, y: 100 }).dragStart();
 
     // assert
@@ -2843,7 +2844,6 @@ QUnit.test('Default behavior - no prevent. On panning by drag (goes to the edge)
 
     // act
     const $root = $(chart._renderer.root.element);
-
     $root.trigger(new $.Event('dxdragstart', { pointerType: 'touch', pageX: 100, pageY: 250 }));
     $root.trigger(new $.Event('dxdrag', { pointerType: 'touch', offset: { x: -100, y: 50 } }));
     $root.trigger(new $.Event('dxdragend', { pointerType: 'touch' }));
@@ -2949,7 +2949,6 @@ QUnit.test('On panning by drag (goes from the edge)', function(assert) {
 
     // act
     const $root = $(chart._renderer.root.element);
-
     $root.trigger(new $.Event('dxdragstart', { pointerType: 'touch', pageX: 200, pageY: 250 }));
     $root.trigger(new $.Event('dxdrag', { pointerType: 'touch', offset: { x: 100, y: 50 }, preventDefault: preventDefault, stopPropagation: stopPropagation }));
     $root.trigger(new $.Event('dxdragend', { pointerType: 'touch', preventDefault: preventDefault, stopPropagation: stopPropagation }));

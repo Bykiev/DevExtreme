@@ -108,8 +108,13 @@ module.exports = {
                     that._items = [];
                     that._columnsController = that.getController('columns');
 
+                    that._currentOperationTypes = null;
+                    that._dataChangedHandler = (e) => {
+                        that._currentOperationTypes = this._dataSource.operationTypes();
+                        that._handleDataChanged(e);
+                        that._currentOperationTypes = null;
+                    };
                     that._columnsChangedHandler = that._handleColumnsChanged.bind(that);
-                    that._dataChangedHandler = that._handleDataChanged.bind(that);
                     that._loadingChangedHandler = that._handleLoadingChanged.bind(that);
                     that._loadErrorHandler = that._handleLoadError.bind(that);
                     that._customizeStoreLoadOptionsHandler = that._handleCustomizeStoreLoadOptions.bind(that);
@@ -213,6 +218,7 @@ module.exports = {
                         case 'columns':
                             dataSource = that.dataSource();
                             if(dataSource && dataSource.isLoading() && args.name === args.fullName) {
+                                this._useSortingGroupingFromColumns = true;
                                 dataSource.load();
                             }
                             break;
@@ -288,7 +294,7 @@ module.exports = {
                         columnsController.updateColumnDataTypes(dataSource);
                     }
                     this._columnsUpdating = true;
-                    columnsController.updateSortingGrouping(dataSource, !this._isFirstLoading);
+                    columnsController.updateSortingGrouping(dataSource, !this._useSortingGroupingFromColumns);
                     this._columnsUpdating = false;
 
                     storeLoadOptions.sort = columnsController.getSortDataSourceParameters();
@@ -354,7 +360,7 @@ module.exports = {
                     const columnsController = that._columnsController;
                     let isAsyncDataSourceApplying = false;
 
-                    this._isFirstLoading = false;
+                    this._useSortingGroupingFromColumns = false;
 
                     if(dataSource && !that._isDataSourceApplying) {
                         that._isDataSourceApplying = true;
@@ -454,7 +460,7 @@ module.exports = {
 
                     that.callBase();
                     dataSource = that._dataSource;
-                    that._isFirstLoading = true;
+                    that._useSortingGroupingFromColumns = true;
                     if(dataSource) {
                         that._setPagingOptions(dataSource);
                         that.setDataSource(dataSource);
@@ -489,7 +495,8 @@ module.exports = {
                     const changeType = change.changeType;
                     const visibleColumns = that._columnsController.getVisibleColumns(null, changeType === 'loadingAll');
                     const visibleItems = that._items;
-                    const dataIndex = changeType === 'append' && visibleItems.length > 0 ? visibleItems[visibleItems.length - 1].dataIndex + 1 : 0;
+                    const lastVisibleItem = changeType === 'append' && visibleItems.length > 0 ? visibleItems[visibleItems.length - 1] : null;
+                    const dataIndex = typeUtils.isDefined(lastVisibleItem?.dataIndex) ? lastVisibleItem.dataIndex + 1 : 0;
                     const options = {
                         visibleColumns: visibleColumns,
                         dataIndex: dataIndex
@@ -713,7 +720,10 @@ module.exports = {
                     }
 
                     if(item1.rowType === 'group' || item1.rowType === 'groupFooter') {
-                        if(item1.isExpanded !== item2.isExpanded || JSON.stringify(item1.summaryCells) !== JSON.stringify(item2.summaryCells)) {
+                        const expandedMatch = item1.isExpanded === item2.isExpanded;
+                        const summaryCellsMatch = JSON.stringify(item1.summaryCells) === JSON.stringify(item2.summaryCells);
+                        const continuationMatch = item1.data?.isContinuation === item2.data?.isContinuation && item1.data?.isContinuationOnNextPage === item2.data?.isContinuationOnNextPage;
+                        if(!expandedMatch || !summaryCellsMatch || !continuationMatch) {
                             return false;
                         }
                     }
@@ -901,9 +911,12 @@ module.exports = {
                     return dataSource && dataSource.loadingOperationTypes() || {};
                 },
                 _fireChanged: function(change) {
-                    const that = this;
-                    deferRender(function() {
-                        that.changed.fire(change);
+                    if(this._currentOperationTypes) {
+                        change.operationTypes = this._currentOperationTypes;
+                        this._currentOperationTypes = null;
+                    }
+                    deferRender(() => {
+                        this.changed.fire(change);
                     });
                 },
                 isLoading: function() {
@@ -1030,12 +1043,12 @@ module.exports = {
                     const oldDataSource = that._dataSource;
 
                     if(!dataSource && oldDataSource) {
+                        oldDataSource.cancelAll();
                         oldDataSource.changed.remove(that._dataChangedHandler);
                         oldDataSource.loadingChanged.remove(that._loadingChangedHandler);
                         oldDataSource.loadError.remove(that._loadErrorHandler);
                         oldDataSource.customizeStoreLoadOptions.remove(that._customizeStoreLoadOptionsHandler);
                         oldDataSource.changing.remove(that._changingHandler);
-                        oldDataSource.cancelAll();
                         oldDataSource.dispose(that._isSharedDataSource);
                     }
 
@@ -1112,14 +1125,14 @@ module.exports = {
                     }
                     return d;
                 },
-                getKeyByRowIndex: function(rowIndex) {
-                    const item = this.items()[rowIndex];
+                getKeyByRowIndex: function(rowIndex, byLoaded) {
+                    const item = this.items(byLoaded)[rowIndex];
                     if(item) {
                         return item.key;
                     }
                 },
-                getRowIndexByKey: function(key) {
-                    return gridCoreUtils.getIndexByKey(key, this.items());
+                getRowIndexByKey: function(key, byLoaded) {
+                    return gridCoreUtils.getIndexByKey(key, this.items(byLoaded));
                 },
                 keyOf: function(data) {
                     const store = this.store();

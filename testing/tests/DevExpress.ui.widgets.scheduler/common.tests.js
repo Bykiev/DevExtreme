@@ -23,6 +23,7 @@ import keyboardMock from '../../helpers/keyboardMock.js';
 import themes from 'ui/themes';
 import { SchedulerTestWrapper, createWrapper } from './helpers.js';
 import resizeCallbacks from 'core/utils/resize_callbacks';
+import { Deferred } from 'core/utils/deferred';
 
 import 'ui/scheduler/ui.scheduler';
 import 'common.css!';
@@ -639,6 +640,39 @@ QUnit.module('Initialization', {
         assert.equal(appointment.eq(1).text(), 'Update-2', 'Appointment is rerendered');
     });
 
+    QUnit.test('Push new item to the store (remoteFiltering: true) (T900529)', function(assert) {
+        const data = [{
+            id: 0,
+            text: 'Test Appointment',
+            startDate: new Date(2017, 4, 22, 9, 30),
+            endDate: new Date(2017, 4, 22, 11, 30)
+        }];
+
+        const pushItem = {
+            id: 1,
+            text: 'Pushed Appointment',
+            startDate: new Date(2017, 4, 23, 9, 30),
+            endDate: new Date(2017, 4, 23, 11, 30)
+        };
+
+        const scheduler = createWrapper({
+            dataSource: {
+                load: () => data,
+                key: 'id'
+            },
+            views: ['week'],
+            currentView: 'week',
+            currentDate: new Date(2017, 4, 25)
+        });
+
+        const dataSource = scheduler.instance.getDataSource();
+        dataSource.store().push([{ type: 'update', key: pushItem.id, data: pushItem }]);
+        dataSource.load();
+
+        assert.equal(scheduler.appointments.getTitleText(0), 'Test Appointment', 'Appointment is rerendered');
+        assert.equal(scheduler.appointments.getTitleText(1), 'Pushed Appointment', 'Pushed appointment is rerendered');
+    });
+
     QUnit.test('the \'update\' method of store should have key as arg is store has the \'key\' field', function(assert) {
         const data = [{
             id: 1, text: 'abc', startDate: new Date(2015, 1, 9, 10)
@@ -944,6 +978,18 @@ QUnit.module('Initialization', {
         });
     });
 
+    QUnit.test('Scheduler should not crash when some timezones are set(T913941)', function(assert) {
+        this.createInstance({
+            currentView: 'day',
+            currentDate: new Date(2020, 9, 3)
+        });
+
+        this.instance.option('timeZone', 'America/Indianapolis');
+        this.instance.option('timeZone', 'America/Indiana/Indianapolis');
+
+        assert.ok(true, 'Timezones were applied correctly');
+    });
+
     QUnit.test('Scheduler should work correctly when groupOrientation is set without groups', function(assert) {
         assert.expect(1);
 
@@ -1083,6 +1129,26 @@ QUnit.module('Initialization', {
 
         assert.ok(this.instance._appointmentTooltip.hide.called, 'hide tooltip is called');
         assert.ok(!this.instance._appointmentTooltip.show.called, 'show tooltip is not called');
+    });
+
+    QUnit.test('_getUpdatedData for the empty data item (T906240)', function(assert) {
+        const startCellDate = new Date(2020, 1, 2, 3);
+        const endCellDate = new Date(2020, 1, 2, 4);
+        const scheduler = createWrapper({});
+
+        scheduler.instance.getTargetCellData = () => {
+            return {
+                startDate: startCellDate,
+                endDate: endCellDate
+            };
+        };
+
+        const updatedData = scheduler.instance._getUpdatedData({ text: 'test' });
+        assert.deepEqual(updatedData, {
+            allDay: undefined,
+            endDate: endCellDate,
+            startDate: startCellDate
+        }, 'Updated data is correct');
     });
 })('Methods');
 
@@ -1294,7 +1360,8 @@ QUnit.module('Initialization', {
                 'descriptionExpr': '_description',
                 'allDayExpr': '_allDay',
                 'recurrenceRuleExpr': '_recurrenceRule',
-                'recurrenceExceptionExpr': '_recurrenceException'
+                'recurrenceExceptionExpr': '_recurrenceException',
+                'disabledExpr': '_disabled'
             });
 
             const data = {
@@ -1306,7 +1373,8 @@ QUnit.module('Initialization', {
                 description: 'b',
                 allDay: true,
                 recurrenceRule: 'abc',
-                recurrenceException: 'def'
+                recurrenceException: 'def',
+                disabled: false
             };
             const appointment = {
                 _startDate: data.startDate,
@@ -1317,7 +1385,8 @@ QUnit.module('Initialization', {
                 _description: data.description,
                 _allDay: data.allDay,
                 _recurrenceRule: data.recurrenceRule,
-                _recurrenceException: data.recurrenceException
+                _recurrenceException: data.recurrenceException,
+                _disabled: data.disabled
             };
 
             const dataAccessors = this.instance._dataAccessors;
@@ -2289,6 +2358,46 @@ QUnit.module('Initialization', {
             assert.equal(errors.log.callCount, 1, 'warning has been called once');
             assert.equal(errors.log.getCall(0).args[0], 'W1015', 'warning has correct error id');
         });
+    });
+
+    QUnit.test('Data source should not be loaded on option change if it is already being loaded (T916558)', function(assert) {
+        const dataSource = new DataSource({
+            store: []
+        });
+        this.createInstance({
+            currentDate: new Date(2015, 4, 24),
+            views: ['day', 'workWeek', { type: 'week' }],
+            currentView: 'day',
+            dataSource,
+        });
+
+        const initMarkupSpy = sinon.spy(this.instance, '_initMarkup');
+        const reloadDataSourceSpy = sinon.spy(this.instance, '_reloadDataSource');
+
+        const nextDataSource = new DataSource({
+            store: new CustomStore({
+                load: function() {
+                    const d = $.Deferred();
+                    setTimeout(function() {
+                        d.resolve([]);
+                    }, 300);
+
+                    return d.promise();
+                }
+            })
+        });
+        this.instance.option({
+            'dataSource': nextDataSource,
+        });
+        this.instance.option({
+            'views[2].intervalCount': 2,
+            'views[2].startDate': new Date(),
+        });
+
+        this.clock.tick(400);
+
+        assert.ok(initMarkupSpy.calledTwice, 'Init markup was called on the second and third option change');
+        assert.ok(reloadDataSourceSpy.calledOnce, '_reloadDataSource was not called on init mark up');
     });
 })('Options');
 
@@ -3586,6 +3695,30 @@ QUnit.module('Initialization', {
 
         assert.ok(appointmentsSpy.calledAfter(workspaceSpy), 'workSpace dimension changing was called before appointments repainting');
     });
+
+    QUnit.test('ContentReady event should be fired after render completely ready (T902483)', function(assert) {
+        let contentReadyFiresCount = 0;
+
+        const scheduler = createWrapper({
+            onContentReady: () => ++contentReadyFiresCount
+        });
+
+        assert.equal(contentReadyFiresCount, 1, 'contentReadyFiresCount === 1');
+
+        scheduler.instance._workSpaceRecalculation = new Deferred();
+        scheduler.instance._fireContentReadyAction();
+
+        assert.equal(contentReadyFiresCount, 1, 'contentReadyFiresCount === 1');
+
+        scheduler.instance._workSpaceRecalculation.resolve();
+
+        assert.equal(contentReadyFiresCount, 2, 'contentReadyFiresCount === 2');
+
+        scheduler.instance._workSpaceRecalculation = null;
+        scheduler.instance._fireContentReadyAction();
+
+        assert.equal(contentReadyFiresCount, 3, 'contentReadyFiresCount === 3');
+    });
 })('Events');
 
 (function() {
@@ -4587,6 +4720,44 @@ QUnit.module('Initialization', {
         });
     });
 
+    QUnit.test('Scrollable content should have correct height when native scrolling is used and a cell\'s height is greater than default', function(assert) {
+        const scheduler = createWrapper({
+            height: 1500,
+            views: ['month'],
+            currentView: 'month',
+        });
+
+        const scrollable = scheduler.workSpace.getScrollable();
+        scrollable.option('useNative', true);
+
+        const dateTableHeight = scheduler.workSpace.getDateTableHeight();
+        const scrollHeight = scrollable.scrollHeight();
+        const scrollableHeight = scrollable.$element().height();
+
+        assert.equal(scrollableHeight, dateTableHeight, 'Correct dateTable height');
+        assert.equal(scrollableHeight, scrollHeight, 'Correct scroll content height');
+    });
+
+    QUnit.test('Scrollable content should have correct height when native scrolling is used and a cell\'s height is equal to default', function(assert) {
+        const scheduler = createWrapper({
+            height: 500,
+            views: [{
+                type: 'month',
+                intervalCount: 5,
+            }],
+            currentView: 'month',
+        });
+
+        const scrollable = scheduler.workSpace.getScrollable();
+        scrollable.option('useNative', true);
+
+        const dateTableHeight = scheduler.workSpace.getDateTableHeight();
+        const scrollHeight = scrollable.scrollHeight();
+        const scrollableHeight = scrollable.$element().height();
+
+        assert.equal(scrollHeight, dateTableHeight, 'Correct dateTable height');
+        assert.notEqual(scrollableHeight, scrollHeight, 'Correct scroll content height');
+    });
 })('View with configuration');
 
 QUnit.module('Options for Material theme in components', {

@@ -5,6 +5,7 @@ import { addNamespace, normalizeKeyName } from '../../../events/utils';
 import { move } from '../../../animation/translator';
 import devices from '../../../core/devices';
 import Resizable from '../../resizable';
+import { getBoundingRect } from '../../../core/utils/position';
 import Quill from 'quill';
 
 const DX_RESIZE_FRAME_CLASS = 'dx-resize-frame';
@@ -13,6 +14,7 @@ const MODULE_NAMESPACE = 'dxHtmlResizingModule';
 
 const KEYDOWN_EVENT = addNamespace('keydown', MODULE_NAMESPACE);
 const SCROLL_EVENT = addNamespace('scroll', MODULE_NAMESPACE);
+const MOUSEDOWN_EVENT = addNamespace('mousedown', MODULE_NAMESPACE);
 
 const FRAME_PADDING = 1;
 
@@ -22,6 +24,8 @@ export default class ResizingModule {
         this.editorInstance = options.editorInstance;
         this.allowedTargets = options.allowedTargets || ['image'];
         this.enabled = !!options.enabled;
+        this._hideFrameWithContext = this.hideFrame.bind(this);
+        this._framePositionChangedHandler = this._prepareFramePositionChangedHandler();
 
         if(this.enabled) {
             this._attachEvents();
@@ -31,11 +35,15 @@ export default class ResizingModule {
 
     _attachEvents() {
         eventsEngine.on(this.quill.root, addNamespace(ClickEvent, MODULE_NAMESPACE), this._clickHandler.bind(this));
-        eventsEngine.on(this.quill.root, SCROLL_EVENT, this._scrollHandler.bind(this));
+        eventsEngine.on(this.quill.root, SCROLL_EVENT, this._framePositionChangedHandler);
+        this.editorInstance.on('focusOut', this._hideFrameWithContext);
+        this.quill.on('text-change', this._framePositionChangedHandler);
     }
 
     _detachEvents() {
         eventsEngine.off(this.quill.root, MODULE_NAMESPACE);
+        this.editorInstance.off('focusOut', this._hideFrameWithContext);
+        this.quill.off('text-change', this._framePositionChangedHandler);
     }
 
     _clickHandler(e) {
@@ -48,14 +56,23 @@ export default class ResizingModule {
 
             this.updateFramePosition();
             this.showFrame();
+            this._adjustSelection();
         } else if(this._$target) {
             this.hideFrame();
         }
     }
 
-    _scrollHandler(e) {
-        if(this._$target) {
-            this.updateFramePosition();
+    _prepareFramePositionChangedHandler(e) {
+        return () => {
+            if(this._$target) {
+                this.updateFramePosition();
+            }
+        };
+    }
+
+    _adjustSelection() {
+        if(!this.quill.getSelection()) {
+            this.quill.setSelection(0, 0);
         }
     }
 
@@ -87,8 +104,8 @@ export default class ResizingModule {
     }
 
     updateFramePosition() {
-        const { height, width, top: targetTop, left: targetLeft } = this._$target.getBoundingClientRect();
-        const { top: containerTop, left: containerLeft } = this.quill.root.getBoundingClientRect();
+        const { height, width, top: targetTop, left: targetLeft } = getBoundingRect(this._$target);
+        const { top: containerTop, left: containerLeft } = getBoundingRect(this.quill.root);
         const borderWidth = this._getBorderWidth();
 
         this._$resizeFrame
@@ -118,6 +135,11 @@ export default class ResizingModule {
             .toggleClass(DX_TOUCH_DEVICE_CLASS, deviceType !== 'desktop')
             .appendTo(this.editorInstance._getQuillContainer())
             .hide();
+
+
+        eventsEngine.on(this._$resizeFrame, MOUSEDOWN_EVENT, (e) => {
+            e.preventDefault();
+        });
 
         this.editorInstance._createComponent(this._$resizeFrame, Resizable, {
             onResize: (e) => {

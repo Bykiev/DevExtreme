@@ -21,6 +21,17 @@ const DEFAULT_CONTEXT_MENU_ITEMS = {
     }
 };
 
+const DEFAULT_ITEM_ALLOWED_PROPERTIES = [
+    'beginGroup',
+    'closeMenuOnClick',
+    'disabled',
+    'icon',
+    'selectable',
+    'selected',
+    'text',
+    'visible'
+];
+
 class FileManagerContextMenu extends Widget {
 
     _initMarkup() {
@@ -33,19 +44,20 @@ class FileManagerContextMenu extends Widget {
             cssClass: FILEMANAGER_CONTEXT_MEMU_CLASS,
             showEvent: '',
             onItemClick: (args) => this._onContextMenuItemClick(args.itemData.name, args),
+            onShowing: () => this._actions.onContextMenuShowing(),
             onHidden: () => this._onContextMenuHidden()
         });
 
         super._initMarkup();
     }
 
-    showAt(fileItems, element, offset) {
+    showAt(fileItems, element, offset, targetFileItem) {
         if(this._isVisible) {
             this._raiseContextMenuHidden();
         }
         this._isVisible = true;
 
-        const items = this.createContextMenuItems(fileItems);
+        const items = this.createContextMenuItems(fileItems, null, targetFileItem);
 
         const position = {
             of: element,
@@ -71,15 +83,16 @@ class FileManagerContextMenu extends Widget {
         this._contextMenu.show();
     }
 
-    createContextMenuItems(fileItems, contextMenuItems) {
+    createContextMenuItems(fileItems, contextMenuItems, targetFileItem) {
         this._targetFileItems = fileItems;
+        this._targetFileItem = isDefined(targetFileItem) ? targetFileItem : fileItems?.[0];
 
         const result = [];
 
         const itemArray = contextMenuItems || this.option('items');
         itemArray.forEach(srcItem => {
             const commandName = isString(srcItem) ? srcItem : srcItem.name;
-            const item = this._configureItemByCommandName(commandName, srcItem, fileItems);
+            const item = this._configureItemByCommandName(commandName, srcItem, fileItems, this._targetFileItem);
             if(this._isContextMenuItemAvailable(item, fileItems)) {
                 result.push(item);
             }
@@ -110,19 +123,19 @@ class FileManagerContextMenu extends Widget {
 
     _extendAttributes(targetObject, sourceObject, objectKeysArray) {
         objectKeysArray.forEach(objectKey => {
-            extend(targetObject, sourceObject[objectKey]
+            extend(targetObject, isDefined(sourceObject[objectKey])
                 ? { [objectKey]: sourceObject[objectKey] }
                 : {});
         });
     }
 
-    _configureItemByCommandName(commandName, item, fileItems) {
+    _configureItemByCommandName(commandName, item, fileItems, targetFileItem) {
         if(!this._isDefaultItem(commandName)) {
             const res = extend(true, {}, item);
             res.originalItemData = item;
             this._addItemClickHandler(commandName, res);
             if(Array.isArray(item.items)) {
-                res.items = this.createContextMenuItems(fileItems, item.items);
+                res.items = this.createContextMenuItems(fileItems, item.items, targetFileItem);
             }
             return res;
         }
@@ -131,12 +144,10 @@ class FileManagerContextMenu extends Widget {
         const defaultConfig = DEFAULT_CONTEXT_MENU_ITEMS[commandName];
         extend(result, defaultConfig);
         result.originalItemData = item;
-        this._extendAttributes(result, item, ['visible', 'beginGroup', 'text', 'icon']);
+        this._extendAttributes(result, item, DEFAULT_ITEM_ALLOWED_PROPERTIES);
 
         if(!isDefined(result.visible)) {
             result._autoHide = true;
-        } else {
-            this._extendAttributes(result, item, ['visible', 'disabled']);
         }
 
         if(commandName && !result.name) {
@@ -164,6 +175,8 @@ class FileManagerContextMenu extends Widget {
     _onContextMenuItemClick(commandName, args) {
         const changedArgs = extend(true, {}, args);
         changedArgs.itemData = args.itemData.originalItemData;
+        changedArgs.fileSystemItem = this._targetFileItem?.fileItem;
+        changedArgs.viewArea = this.option('viewArea');
         this._actions.onItemClick(changedArgs);
         if(this._isDefaultItem(commandName)) {
             const targetFileItems = this._isIsolatedCreationItemCommand(commandName) ? null : this._targetFileItems;
@@ -174,6 +187,7 @@ class FileManagerContextMenu extends Widget {
     _initActions() {
         this._actions = {
             onContextMenuHidden: this._createActionByOption('onContextMenuHidden'),
+            onContextMenuShowing: this._createActionByOption('onContextMenuShowing'),
             onItemClick: this._createActionByOption('onItemClick')
         };
     }
@@ -202,7 +216,14 @@ class FileManagerContextMenu extends Widget {
             case 'commandManager':
                 this.repaint();
                 break;
+            case 'items':
+                if(this._isVisible) {
+                    const items = this.createContextMenuItems(this._targetFileItems);
+                    this._contextMenu.option('dataSource', items);
+                }
+                break;
             case 'onItemClick':
+            case 'onContextMenuShowing':
             case 'onContextMenuHidden':
                 this._actions[name] = this._createActionByOption(name);
                 break;

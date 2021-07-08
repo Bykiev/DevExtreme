@@ -40,10 +40,6 @@ class RemoteFileSystemProvider extends FileSystemProviderBase {
         return this._executeRequest('CreateDir', {
             pathInfo: parentDir.getFullPathInfo(),
             name
-        }).done(() => {
-            if(parentDir && !parentDir.isRoot()) {
-                parentDir.hasSubDirectories = true;
-            }
         });
     }
 
@@ -76,7 +72,7 @@ class RemoteFileSystemProvider extends FileSystemProviderBase {
         }
 
         const args = {
-            destinationId: destinationDirectory.relativeName,
+            destinationPathInfo: destinationDirectory.getFullPathInfo(),
             chunkMetadata: JSON.stringify({
                 UploadId: chunksInfo.customData.uploadId,
                 FileName: fileData.name,

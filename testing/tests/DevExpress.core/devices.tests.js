@@ -1,14 +1,16 @@
 window.includeThemesLinks();
 
-const $ = require('jquery');
-const renderer = require('core/renderer');
-const themes = require('ui/themes');
-const devices = require('core/devices');
+import $ from 'jquery';
+import renderer from 'core/renderer';
+import domAdapter from 'core/dom_adapter';
+import themes from 'ui/themes';
+import devices from 'core/devices';
 const fromUA = $.proxy(devices._fromUA, devices);
-const viewPort = require('core/utils/view_port');
+import viewPort from 'core/utils/view_port';
 const viewPortChanged = viewPort.changeCallback;
-const resizeCallbacks = require('core/utils/resize_callbacks');
-const config = require('core/config');
+import resizeCallbacks from 'core/utils/resize_callbacks';
+import readyCallbacks from 'core/utils/ready_callbacks';
+import config from 'core/config';
 
 const userAgents = {
     iphone_12: 'Mozilla/5.0 (iPhone; CPU iPhone OS 12_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.1.1 Mobile/15E148 Safari/604.1',
@@ -27,7 +29,9 @@ QUnit.module('devices', {
         this._savedDevice = devices.current();
     },
     afterEach: function() {
+        themes.resetTheme();
         devices.current(this._savedDevice);
+        return new Promise((resolve) => themes.initialized(resolve));
     }
 });
 
@@ -383,6 +387,38 @@ QUnit.test('isSimulator return true when is ripple emulator', function(assert) {
     }
 });
 
+QUnit.test('should not call document properties before content is loaded', function(assert) {
+    const Proxy = window.Proxy;
+    if(!Proxy) {
+        assert.expect(0);
+        return;
+    }
+
+    const originalDocumentGetter = domAdapter.getDocumentElement;
+    const originalReadyCallbacksAdd = readyCallbacks.add;
+
+    try {
+        let documentPropertiesCallCount = 0;
+        const documentMock = new Proxy({}, {
+            get() {
+                documentPropertiesCallCount++;
+                return;
+            }
+        });
+
+        domAdapter.getDocumentElement = () => {
+            return documentMock;
+        };
+        readyCallbacks.add = () => {};
+
+        new devices.Devices();
+
+        assert.strictEqual(documentPropertiesCallCount, 0, 'document properties call count');
+    } finally {
+        domAdapter.getDocumentElement = originalDocumentGetter;
+        readyCallbacks.add = originalReadyCallbacksAdd;
+    }
+});
 
 QUnit.module('orientation', {
     beforeEach: function() {
@@ -439,8 +475,20 @@ QUnit.test('no unnecessary orientationChanged on screen keyboard appearing', fun
 });
 
 QUnit.test('force device replace only needed option', function(assert) {
-    devices.current({ platform: 'ios', deviceType: 'tablet' });
-    devices.current({ platform: 'android' });
+    const done = assert.async();
+    themes.resetTheme();
+    themes.initialized(() => {
+        themes.resetTheme();
+        themes.initialized(() => {
+            // 3. assert
+            assert.equal(devices.current().deviceType, 'tablet', 'deviceType was not overridden');
+            done();
+        });
 
-    assert.equal(devices.current().deviceType, 'tablet', 'deviceType was not overridden');
+        // 2. change platform
+        devices.current({ platform: 'android' });
+    });
+
+    // 1. set platform and deviceType
+    devices.current({ platform: 'ios', deviceType: 'tablet' });
 });

@@ -1889,6 +1889,135 @@ QUnit.test('Vertical left. Alignment center', function(assert) {
     assert.deepEqual(renderer.text.getCall(1).returnValue.attr.getCall(3).args[0], { translateX: 10 - 10 - 14 / 2 - (3 + 14 / 2), translateY: 60 - 4 - 8 / 2 }, 'Text args');
 });
 
+QUnit.test('Vertical left. Alignment center by theme', function(assert) {
+    // arrange
+    const renderer = this.renderer;
+    this.createAxis();
+    this.updateOptions({
+        isHorizontal: false,
+        position: 'left',
+        label: {
+            visible: true,
+            indentFromAxis: 10,
+            alignment: 'center',
+            userAlignment: false
+        }
+    });
+
+    this.generatedTicks = [1, 2];
+
+    this.translator.stub('translate').withArgs(1).returns(40);
+    this.translator.stub('translate').withArgs(2).returns(60);
+
+    this.renderer.bBoxTemplate = (function() {
+        let idx = 0;
+        return function() {
+            return [
+                { x: 1, y: 2, width: 12, height: 6 },
+                { x: 3, y: 4, width: 14, height: 8 }
+            ][idx++];
+        };
+    })();
+
+    // act
+    this.axis.draw(this.canvas);
+
+    // assert
+    assert.equal(renderer.text.callCount, 2, 'Text call count');
+
+    assert.deepEqual(renderer.text.getCall(0).returnValue.attr.getCall(1).args[0], { x: 10, y: 40 });
+    assert.deepEqual(renderer.text.getCall(1).returnValue.attr.getCall(1).args[0], { x: 10, y: 60 });
+
+    assert.deepEqual(renderer.text.getCall(0).returnValue.attr.getCall(3).args[0], { translateX: 10 - 10 - 14 / 2 - (1 + 12 / 2), translateY: 40 - 2 - 6 / 2 }, 'Text args');
+    assert.deepEqual(renderer.text.getCall(1).returnValue.attr.getCall(3).args[0], { translateX: 10 - 10 - 14 / 2 - (3 + 14 / 2), translateY: 60 - 4 - 8 / 2 }, 'Text args');
+});
+
+QUnit.test('Vertical left. Alignment right (left by theme)', function(assert) {
+    // arrange
+    const renderer = this.renderer;
+    this.createAxis();
+    this.updateOptions({
+        isHorizontal: false,
+        position: 'left',
+        label: {
+            visible: true,
+            indentFromAxis: 10,
+            alignment: 'left',
+            userAlignment: false
+        }
+    });
+
+    this.generatedTicks = [1, 2];
+
+    this.translator.stub('translate').withArgs(1).returns(40);
+    this.translator.stub('translate').withArgs(2).returns(60);
+
+    this.renderer.bBoxTemplate = (function() {
+        let idx = 0;
+        return function() {
+            return [
+                { x: 1, y: 2, width: 12, height: 6 },
+                { x: 3, y: 4, width: 14, height: 8 }
+            ][idx++];
+        };
+    })();
+
+    // act
+    this.axis.draw(this.canvas);
+
+    // assert
+    assert.equal(renderer.text.callCount, 2, 'Text call count');
+
+    assert.deepEqual(renderer.text.getCall(0).returnValue.attr.getCall(1).args[0], { x: 10, y: 40 });
+    assert.deepEqual(renderer.text.getCall(1).returnValue.attr.getCall(1).args[0], { x: 10, y: 60 });
+
+    assert.deepEqual(renderer.text.getCall(0).returnValue.attr.getCall(3).args[0], { translateX: 10 - 10 - (1 + 12), translateY: 40 - 2 - 6 / 2 }, 'Text args');
+    assert.deepEqual(renderer.text.getCall(1).returnValue.attr.getCall(3).args[0], { translateX: 10 - 10 - (3 + 14), translateY: 60 - 4 - 8 / 2 }, 'Text args');
+});
+
+QUnit.test('Vertical right. Alignment left (right by theme)', function(assert) {
+    // arrange
+    const renderer = this.renderer;
+    this.createAxis();
+    this.updateOptions({
+        isHorizontal: false,
+        position: 'right',
+        label: {
+            visible: true,
+            indentFromAxis: 10,
+            alignment: 'right',
+            userAlignment: false
+        }
+    });
+
+    this.generatedTicks = [1, 2];
+
+    this.translator.stub('translate').withArgs(1).returns(40);
+    this.translator.stub('translate').withArgs(2).returns(60);
+
+    this.renderer.bBoxTemplate = (function() {
+        let idx = 0;
+        return function() {
+            return [
+                { x: 1, y: 2, width: 12, height: 6 },
+                { x: 3, y: 4, width: 14, height: 8 }
+            ][idx++];
+        };
+    })();
+
+    // act
+    this.axis.draw(this.canvas);
+
+    // assert
+    assert.equal(renderer.text.callCount, 2, 'Text call count');
+
+    assert.deepEqual(renderer.text.getCall(0).returnValue.attr.getCall(1).args[0], { x: 90, y: 40 });
+    assert.deepEqual(renderer.text.getCall(1).returnValue.attr.getCall(1).args[0], { x: 90, y: 60 });
+
+    assert.deepEqual(renderer.text.getCall(0).returnValue.attr.getCall(3).args[0], { translateX: 90 + 10 - 1, translateY: 40 - 2 - 6 / 2 }, 'Text args');
+    assert.deepEqual(renderer.text.getCall(1).returnValue.attr.getCall(3).args[0], { translateX: 90 + 10 - 3, translateY: 60 - 4 - 8 / 2 }, 'Text args');
+});
+
 QUnit.test('Vertical left. Alignment right', function(assert) {
     // arrange
     const renderer = this.renderer;
@@ -2165,9 +2294,8 @@ QUnit.test('Vertical right. Alignment not set - render as left', function(assert
 
     this.generatedTicks = [1, 2];
 
-    this.translator.stub('translate').returns(0);
-    this.translator.stub('translate').withArgs(1, undefined, false).returns(40);
-    this.translator.stub('translate').withArgs(2, undefined, false).returns(60);
+    this.translator.stub('translate').withArgs(1).returns(40);
+    this.translator.stub('translate').withArgs(2).returns(60);
 
     this.renderer.bBoxTemplate = (function() {
         let idx = 0;
@@ -2490,6 +2618,39 @@ QUnit.test('Labels are outside canvas (on zoom) - do not draw outside labels', f
     this.axis.draw(this.canvas);
 
     assert.equal(this.renderer.stub('text').callCount, 0);
+});
+
+QUnit.test('Labels are outside after zoom, should not adjust', function(assert) {
+    // arrange
+    this.createAxis();
+    this.updateOptions({
+        isHorizontal: true,
+        position: 'top',
+        label: {
+            visible: true,
+            indentFromAxis: 10,
+            alignment: 'left'
+        }
+    });
+
+    this.generatedTicks = [1, 2];
+    this.translator.stub('translate').withArgs(1).returns(40);
+    this.translator.stub('translate').withArgs(2).returns(60);
+
+    // act
+    this.axis.draw(this.canvas);
+
+    // zoom
+    this.translator.stub('translate').withArgs(1).returns(0);
+
+    // act
+    this.axis.draw(this.canvas);
+
+    // assert
+    assert.equal(this.renderer.text.callCount, 2, 'Text call count');
+
+    assert.equal(this.renderer.text.getCall(0).returnValue.attr.callCount, 4);
+    assert.equal(this.renderer.text.getCall(1).returnValue.attr.callCount, 8);
 });
 
 QUnit.module('XY linear axis. Draw. Check tick labels. Position not \'outside\'', environment);
@@ -5175,6 +5336,40 @@ QUnit.test('Vertical right. alignment = right', function(assert) {
     assert.equal(renderer.text.getCall(0).returnValue.attr.getCall(0).args[0].align, 'right');
 });
 
+QUnit.test('Axis has a title and labels are positioned inside the chart (T891064)', function(assert) {
+    // arrange
+    this.createAxis();
+    this.updateOptions({
+        isHorizontal: true,
+        position: 'top',
+        width: 2,
+        label: {
+            visible: true,
+            position: 'inside'
+        },
+        title: {
+            margin: 5,
+            text: 'Title text',
+            font: {
+                color: '#123456',
+                weight: 200,
+                size: 10,
+                family: 'Tahoma'
+            }
+        }
+    });
+
+    this.axis._adjustTitle = sinon.spy();
+
+    this.renderer.bBoxTemplate = { x: 1, y: 2, width: 12, height: 6 };
+    this.generatedTicks = [1, 2, 3];
+
+    // act
+    this.axis.draw(this.canvas);
+
+    assert.equal(this.axis._adjustTitle.getCall(0).args[0], 0, 'Positive sharp direction');
+});
+
 QUnit.module('XY linear axis. Draw. Date marker', environment);
 
 QUnit.test('Full markers', function(assert) {
@@ -7404,7 +7599,7 @@ QUnit.test('Horizontal. Minor grids', function(assert) {
     assert.deepEqual(path.getCall(2).returnValue.append.getCall(0).args[0], group);
 });
 
-QUnit.test('Vertical. Major grids', function(assert) {
+QUnit.test('Vertical. Major grids. Ticks were generated', function(assert) {
     // arrange
     this.createAxis();
     this.updateOptions({
@@ -7436,7 +7631,7 @@ QUnit.test('Vertical. Major grids', function(assert) {
     assert.equal(this.renderer.path.lastCall.returnValue.sharp.lastCall.args[1], 1, 'Sharp direction');
 });
 
-QUnit.test('Vertical. Major grids', function(assert) {
+QUnit.test('Vertical. Major grids. Minor ticks were generated', function(assert) {
     // arrange
     this.createAxis();
     this.updateOptions({
@@ -8013,6 +8208,40 @@ QUnit.test('Horizontal axis. Without color', function(assert) {
     assert.equal(renderer.stub('rect').callCount, 0);
 });
 
+// T900791
+QUnit.test('Strips. endValue === startValue', function(assert) {
+    // arrange
+    const renderer = this.renderer;
+    this.createAxis();
+    this.updateOptions({
+        isHorizontal: true,
+        strips: [{
+            startValue: 5,
+            endValue: 5,
+            color: 'red',
+            label: { horizontalAlignment: 'center', text: 'text' }
+
+        }]
+    });
+
+    this.axis.setBusinessRange({
+        min: 0,
+        max: 10
+    });
+    this.translator.stub('translate').withArgs(5).returns(30);
+
+    this.axis.parser = function(value) {
+        return value;
+    };
+    // act
+    this.axis.draw(this.canvas);
+
+    // assert
+    assert.strictEqual(renderer.stub('rect').callCount, 1);
+    assert.deepEqual(renderer.rect.getCall(0).args, [30, 30, 0, 40], 'points');
+    assert.strictEqual(renderer.text.callCount, 1);
+});
+
 QUnit.test('Horizontal axis. Some strips out of bounds, some strips partially out of bounds', function(assert) {
     // arrange
     const renderer = this.renderer;
@@ -8042,14 +8271,14 @@ QUnit.test('Horizontal axis. Some strips out of bounds, some strips partially ou
         min: 0,
         max: 10
     });
-    this.translator.stub('translate').withArgs(-3).returns(null);
-    this.translator.stub('translate').withArgs(-2).returns(null);
-    this.translator.stub('translate').withArgs(-1).returns(null);
+    this.translator.stub('translate').withArgs(-3).returns(7);
+    this.translator.stub('translate').withArgs(-2).returns(8);
+    this.translator.stub('translate').withArgs(-1).returns(9);
     this.translator.stub('translate').withArgs(1).returns(30);
     this.translator.stub('translate').withArgs(9).returns(50);
-    this.translator.stub('translate').withArgs(11).returns(null);
-    this.translator.stub('translate').withArgs(12).returns(null);
-    this.translator.stub('translate').withArgs(13).returns(null);
+    this.translator.stub('translate').withArgs(11).returns(100);
+    this.translator.stub('translate').withArgs(12).returns(110);
+    this.translator.stub('translate').withArgs(13).returns(120);
     this.axis.parser = function(value) {
         return value;
     };
@@ -8058,8 +8287,8 @@ QUnit.test('Horizontal axis. Some strips out of bounds, some strips partially ou
 
     // assert
     assert.equal(renderer.rect.callCount, 2);
-    assert.deepEqual(renderer.rect.getCall(0).args, [10, 30, 20, 40], 'points');
-    assert.deepEqual(renderer.rect.getCall(1).args, [50, 30, 40, 40], 'points');
+    assert.deepEqual(renderer.rect.getCall(0).args, [9, 30, 21, 40], 'points');
+    assert.deepEqual(renderer.rect.getCall(1).args, [50, 30, 50, 40], 'points');
 });
 
 QUnit.test('Vertical axis. Some strips out of bounds, some strips partially out of bounds', function(assert) {
@@ -8091,14 +8320,14 @@ QUnit.test('Vertical axis. Some strips out of bounds, some strips partially out 
         min: 0,
         max: 10
     });
-    this.translator.stub('translate').withArgs(-3).returns(null);
-    this.translator.stub('translate').withArgs(-2).returns(null);
-    this.translator.stub('translate').withArgs(-1).returns(null);
+    this.translator.stub('translate').withArgs(-3).returns(7);
+    this.translator.stub('translate').withArgs(-2).returns(8);
+    this.translator.stub('translate').withArgs(-1).returns(9);
     this.translator.stub('translate').withArgs(1).returns(50);
     this.translator.stub('translate').withArgs(9).returns(40);
-    this.translator.stub('translate').withArgs(11).returns(null);
-    this.translator.stub('translate').withArgs(12).returns(null);
-    this.translator.stub('translate').withArgs(13).returns(null);
+    this.translator.stub('translate').withArgs(11).returns(100);
+    this.translator.stub('translate').withArgs(12).returns(110);
+    this.translator.stub('translate').withArgs(13).returns(120);
     this.axis.parser = function(value) {
         return value;
     };
@@ -8107,8 +8336,8 @@ QUnit.test('Vertical axis. Some strips out of bounds, some strips partially out 
 
     // assert
     assert.equal(renderer.rect.callCount, 2);
-    assert.deepEqual(renderer.rect.getCall(0).args, [10, 50, 80, 20], 'points');
-    assert.deepEqual(renderer.rect.getCall(1).args, [10, 30, 80, 10], 'points');
+    assert.deepEqual(renderer.rect.getCall(0).args, [10, 9, 80, 41], 'points');
+    assert.deepEqual(renderer.rect.getCall(1).args, [10, 40, 80, 60], 'points');
 });
 
 QUnit.test('Horizontal axis. End value > start value', function(assert) {
@@ -11192,6 +11421,86 @@ QUnit.test('Animate tick to the new position on second drawing', function(assert
     });
 });
 
+QUnit.test('Not animate ticks to the new position after resetApplyingAnimation with first drawing (T876376)', function(assert) {
+    // arrange
+    const renderer = this.renderer;
+    this.createAxis();
+    this.updateOptions({
+        isHorizontal: true,
+        tick: {
+            visible: true,
+            length: 6
+        }
+    });
+    this.generatedTicks = [1];
+    this.translator.stub('translate').withArgs(1).returns(40);
+
+    this.axis.draw(this.zeroMarginCanvas);
+    this.axis.updateSize(this.canvas, true);
+
+    const tick = renderer.path.lastCall.returnValue;
+    assert.deepEqual(tick.attr.lastCall.args[0], {
+        points: [40, 66, 40, 72],
+        opacity: 1
+    });
+
+    // act
+    this.translator.stub('translate').withArgs(1).returns(50);
+    this.axis.resetApplyingAnimation(true);
+
+    this.axis.draw(this.zeroMarginCanvas);
+    this.axis.updateSize(this.canvas, true);
+    // assert
+
+    assert.notOk(tick.stub('animate').called);
+    assert.deepEqual(tick.attr.lastCall.args[0], {
+        points: [50, 66, 50, 72],
+        opacity: 1
+    });
+});
+
+QUnit.test('Animate ticks to the new position after updating, resetApplyingAnimation and drawing (T876376)', function(assert) {
+    // arrange
+    const renderer = this.renderer;
+    this.createAxis();
+    this.updateOptions({
+        isHorizontal: true,
+        tick: {
+            visible: true,
+            length: 6
+        }
+    });
+    this.translator.stub('translate').withArgs(1).returns(40);
+
+    const drawing = (firstDrawing) => {
+        this.axis.draw(this.zeroMarginCanvas);
+        this.axis.updateSize(this.canvas, true);
+
+        this.axis.resetApplyingAnimation(firstDrawing);
+
+        this.axis.draw(this.zeroMarginCanvas);
+        this.axis.updateSize(this.canvas, true);
+    };
+
+    this.generatedTicks = [1];
+    drawing(true);
+
+    this.translator.stub('translate').withArgs(1).returns(50);
+    // update
+    drawing();
+
+    // assert
+    const tick = renderer.path.lastCall.returnValue;
+    assert.equal(tick.stub('animate').callCount, 2);
+    assert.deepEqual(tick.attr.lastCall.args[0], {
+        points: [40, 66, 40, 72],
+    });
+    assert.deepEqual(tick.animate.lastCall.args[0], {
+        points: [50, 66, 50, 72],
+        opacity: 1
+    });
+});
+
 QUnit.test('Fade in new tick on second drawing', function(assert) {
     // arrange
     const renderer = this.renderer;
@@ -11337,6 +11646,87 @@ QUnit.test('Animate grid line to the new position on second drawing', function(a
     assert.equal(gridLine.stub('animate').callCount, 1);
     assert.deepEqual(gridLine.attr.lastCall.args[0], {
         points: [40, 30, 40, 70]
+    });
+
+    assert.deepEqual(gridLine.animate.lastCall.args[0], {
+        points: [50, 30, 50, 70],
+        opacity: 1
+    });
+});
+
+
+QUnit.test('Not animate grid to the new position after resetApplyingAnimation with first drawing (T876376)', function(assert) {
+    // arrange
+    const renderer = this.renderer;
+    this.createAxis();
+    this.updateOptions({
+        isHorizontal: true,
+        grid: {
+            visible: true
+        }
+    });
+    this.generatedTicks = [1];
+    this.translator.stub('translate').withArgs(1).returns(40);
+
+    this.axis.draw(this.zeroMarginCanvas);
+    this.axis.updateSize(this.canvas, true);
+
+    const gridLine = renderer.path.lastCall.returnValue;
+    assert.deepEqual(gridLine.attr.lastCall.args[0], {
+        points: [40, 30, 40, 70],
+        opacity: 1
+    });
+
+    // act
+    this.translator.stub('translate').withArgs(1).returns(50);
+    this.axis.resetApplyingAnimation(true);
+
+    this.axis.draw(this.zeroMarginCanvas);
+    this.axis.updateSize(this.canvas, true);
+    // assert
+
+    assert.notOk(gridLine.stub('animate').called);
+    assert.deepEqual(gridLine.attr.lastCall.args[0], {
+        points: [50, 30, 50, 70],
+        opacity: 1
+    });
+});
+
+QUnit.test('Animate grid to the new position after updating, resetApplyingAnimation and drawing (T876376)', function(assert) {
+    // arrange
+    const renderer = this.renderer;
+    this.createAxis();
+    this.updateOptions({
+        isHorizontal: true,
+        grid: {
+            visible: true
+        }
+    });
+    this.translator.stub('translate').withArgs(1).returns(40);
+
+    const drawing = (firstDrawing) => {
+        this.axis.draw(this.zeroMarginCanvas);
+        this.axis.updateSize(this.canvas, true);
+
+        this.axis.resetApplyingAnimation(firstDrawing);
+
+        this.axis.draw(this.zeroMarginCanvas);
+        this.axis.updateSize(this.canvas, true);
+    };
+
+    this.generatedTicks = [1];
+    drawing(true);
+
+    this.translator.stub('translate').withArgs(1).returns(50);
+
+    // update
+    drawing();
+
+    // assert
+    const gridLine = renderer.path.lastCall.returnValue;
+    assert.equal(gridLine.stub('animate').callCount, 2);
+    assert.deepEqual(gridLine.attr.lastCall.args[0], {
+        points: [40, 30, 40, 70],
     });
 
     assert.deepEqual(gridLine.animate.lastCall.args[0], {
@@ -11553,6 +11943,81 @@ QUnit.test('Animate label to the new position on second drawing', function(asser
     });
 });
 
+QUnit.test('Not animate label to the new position after resetApplyingAnimation with first drawing (T876376)', function(assert) {
+    // arrange
+    const renderer = this.renderer;
+    this.createAxis();
+    this.updateOptions({
+        isHorizontal: true,
+        label: {
+            visible: true
+        }
+    });
+    this.generatedTicks = [1];
+    this.translator.stub('translate').withArgs(1).returns(40);
+
+    this.axis.draw(this.zeroMarginCanvas);
+    this.axis.updateSize(this.canvas, true);
+
+    // act
+    this.translator.stub('translate').withArgs(1).returns(50);
+    this.axis.resetApplyingAnimation(true);
+
+    this.axis.draw(this.zeroMarginCanvas);
+    this.axis.updateSize(this.canvas, true);
+    // assert
+    const label = renderer.text.lastCall.returnValue;
+    assert.deepEqual(label.attr.lastCall.args[0], {
+        x: 50,
+        y: 70
+    });
+    assert.notOk(label.stub('animate').called);
+});
+
+QUnit.test('Animate label to the new position after updating, resetApplyingAnimation and drawing (T876376)', function(assert) {
+    // arrange
+    const renderer = this.renderer;
+    this.createAxis();
+    this.updateOptions({
+        isHorizontal: true,
+        label: {
+            visible: true
+        }
+    });
+
+    this.translator.stub('translate').withArgs(1).returns(40);
+
+    const drawing = (firstDrawing) => {
+        this.axis.draw(this.zeroMarginCanvas);
+        this.axis.updateSize(this.canvas, true);
+
+        this.axis.resetApplyingAnimation(firstDrawing);
+
+        this.axis.draw(this.zeroMarginCanvas);
+        this.axis.updateSize(this.canvas, true);
+    };
+
+    this.generatedTicks = [1];
+    drawing(true);
+
+    this.translator.stub('translate').withArgs(1).returns(50);
+
+    // update
+    drawing();
+
+    const label = renderer.text.lastCall.returnValue;
+    // assert
+    assert.deepEqual(label.attr.secondCall.args[0], {
+        x: 40,
+        y: 110
+    });
+    assert.equal(label.stub('animate').callCount, 2);
+    assert.deepEqual(label.stub('animate').lastCall.args[0], {
+        x: 50,
+        y: 70
+    });
+});
+
 QUnit.test('Update hint on axis redrawing', function(assert) {
     // arrange
     const renderer = this.renderer;
@@ -11578,6 +12043,35 @@ QUnit.test('Update hint on axis redrawing', function(assert) {
     // assert
     assert.equal(label.setTitle.callCount, 1);
     assert.equal(label.setTitle.lastCall.args[0], 'hint');
+});
+
+QUnit.test('Update hint on axis redrawing after updating the data source (T926456)', function(assert) {
+    // arrange
+    const renderer = this.renderer;
+    this.createAxis();
+    this.updateOptions({
+        visible: false,
+        label: {
+            customizeHint() {
+                return 'hint';
+            },
+            visible: true,
+        }
+    });
+    this.generatedTicks = [1];
+    this.axis.draw(this.zeroMarginCanvas);
+    this.axis.updateSize(this.canvas, true);
+
+    const oldLabel = renderer.text.lastCall.returnValue;
+    oldLabel.setTitle.reset();
+    this.generatedTicks = [111];
+    // act
+    this.axis.draw(this.zeroMarginCanvas);
+    this.axis.updateSize(this.canvas, true);
+    // assert
+    assert.equal(oldLabel.setTitle.callCount, 0);
+    assert.equal(oldLabel.removeTitle.callCount, 1);
+    assert.equal(oldLabel.parent.toBackground.callCount, 1);
 });
 
 QUnit.test('Fade in new label on second drawing', function(assert) {
@@ -11985,6 +12479,80 @@ QUnit.test('Animate minor grid line to the new position on second drawing', func
     });
 });
 
+QUnit.test('Not animate minor grid to the new position after resetApplyingAnimation with first drawing (T876376)', function(assert) {
+    // arrange
+    const renderer = this.renderer;
+    this.createAxis();
+    this.updateOptions({
+        isHorizontal: true,
+        minorGrid: {
+            visible: true
+        }
+    });
+    this.generatedMinorTicks = [1];
+    this.translator.stub('translate').withArgs(1).returns(40);
+
+    this.axis.draw(this.zeroMarginCanvas);
+    this.axis.updateSize(this.canvas, true);
+
+    // act
+    this.translator.stub('translate').withArgs(1).returns(50);
+    this.axis.resetApplyingAnimation(true);
+
+    this.axis.draw(this.zeroMarginCanvas);
+    this.axis.updateSize(this.canvas, true);
+    // assert
+    const minorGrid = renderer.path.lastCall.returnValue;
+    assert.notOk(minorGrid.stub('animate').called);
+    assert.deepEqual(minorGrid.attr.lastCall.args[0], {
+        points: [50, 30, 50, 70],
+        opacity: 1
+    });
+});
+
+QUnit.test('Animate minor grid to the new position after updating, resetApplyingAnimation and drawing (T876376)', function(assert) {
+    // arrange
+    const renderer = this.renderer;
+    this.createAxis();
+    this.updateOptions({
+        isHorizontal: true,
+        minorGrid: {
+            visible: true
+        }
+    });
+
+    this.translator.stub('translate').withArgs(1).returns(40);
+
+    const drawing = (firstDrawing) => {
+        this.axis.draw(this.zeroMarginCanvas);
+        this.axis.updateSize(this.canvas, true);
+
+        this.axis.resetApplyingAnimation(firstDrawing);
+
+        this.axis.draw(this.zeroMarginCanvas);
+        this.axis.updateSize(this.canvas, true);
+    };
+
+    this.generatedMinorTicks = [1];
+    drawing(true);
+
+    this.translator.stub('translate').withArgs(1).returns(50);
+    // update
+    drawing();
+
+    // assert
+    const minorGrid = renderer.path.lastCall.returnValue;
+    assert.equal(minorGrid.stub('animate').callCount, 2);
+    assert.deepEqual(minorGrid.attr.lastCall.args[0], {
+        points: [40, 30, 40, 70],
+    });
+
+    assert.deepEqual(minorGrid.animate.lastCall.args[0], {
+        points: [50, 30, 50, 70],
+        opacity: 1
+    });
+});
+
 QUnit.test('Fade in new grid line on second drawing', function(assert) {
     // arrange
     const renderer = this.renderer;
@@ -12192,6 +12760,105 @@ QUnit.test('Animate constant line on second drawing', function(assert) {
     }]);
 });
 
+QUnit.test('Not animate constant line to the new position after resetApplyingAnimation with first drawing (T876376)', function(assert) {
+    // arrange
+    const renderer = this.renderer;
+    this.createAxis();
+    this.updateOptions({
+        isHorizontal: true,
+        constantLines: [{
+            value: 1,
+            label: {
+                position: 'inside',
+                visible: true
+            }
+        }]
+    });
+
+    this.translator.stub('translate').withArgs(1).returns(40);
+
+    this.axis.draw(this.zeroMarginCanvas);
+    this.axis.updateSize(this.canvas, true);
+
+    // act
+    this.axis.resetApplyingAnimation(true);
+
+    this.axis.draw(this.zeroMarginCanvas);
+    this.axis.updateSize(this.canvas, true);
+    // assert
+
+
+    const line = renderer.path.lastCall.returnValue;
+    const text = renderer.text.lastCall.returnValue;
+    assert.notOk(line.stub('animate').called);
+    assert.notOk(text.stub('animate').called);
+
+    assert.deepEqual(line.attr.lastCall.args, [{
+        points: [40, 30, 40, 70]
+    }]);
+    assert.deepEqual(text.attr.lastCall.args, [{
+        x: 40,
+        y: 30
+    }]);
+});
+
+QUnit.test('Animate constant line to the new position after updating, resetApplyingAnimation and drawing (T876376)', function(assert) {
+    // arrange
+    const renderer = this.renderer;
+    this.createAxis();
+    this.updateOptions({
+        isHorizontal: true,
+        constantLines: [{
+            value: 1,
+            label: {
+                position: 'inside',
+                visible: true
+            }
+        }]
+    });
+
+    const drawing = (firstDrawing) => {
+        this.axis.draw(this.zeroMarginCanvas);
+        this.axis.updateSize(this.canvas, true);
+
+        this.axis.resetApplyingAnimation(firstDrawing);
+
+        this.axis.draw(this.zeroMarginCanvas);
+        this.axis.updateSize(this.canvas, true);
+    };
+
+    this.translator.stub('translate').withArgs(1).returns(40);
+
+    drawing(true);
+
+    this.translator.stub('translate').withArgs(1).returns(50);
+    // update
+    drawing();
+
+    const line = renderer.path.lastCall.returnValue;
+    const text = renderer.text.lastCall.returnValue;
+
+    // assert
+    assert.equal(line.stub('animate').callCount, 1);
+    assert.equal(text.stub('animate').callCount, 1);
+
+    assert.deepEqual(line.attr.lastCall.args, [{
+        points: [40, 30, 40, 70]
+    }]);
+    assert.deepEqual(text.attr.lastCall.args, [{
+        x: 40,
+        y: 30
+    }]);
+
+    assert.deepEqual(line.stub('animate').lastCall.args, [{
+        points: [50, 30, 50, 70]
+    }]);
+    assert.deepEqual(text.stub('animate').lastCall.args, [{
+        x: 50,
+        y: 30
+    }]);
+});
+
 QUnit.test('Do not animate constant line if it position go out from canvas', function(assert) {
     // arrange
     const renderer = this.renderer;
@@ -12320,6 +12987,124 @@ QUnit.test('Animate strip to new position on second drawing', function(assert) {
         height: 40
     }]);
     assert.deepEqual(text.animate.lastCall.args, [{
+        x: 60,
+        y: 30
+    }]);
+});
+
+QUnit.test('Not animate strip to the new position after resetApplyingAnimation with first drawing (T876376)', function(assert) {
+    // arrange
+    const renderer = this.renderer;
+    this.createAxis();
+    this.updateOptions({
+        isHorizontal: true,
+        strips: [{
+            color: 'lightgray',
+            startValue: 1,
+            endValue: 4,
+            label: {
+                text: 'text',
+                horizontalAlignment: 'left'
+            }
+        }]
+    });
+
+    this.translator.stub('translate').withArgs(1).returns(40);
+    this.translator.stub('translate').withArgs(4).returns(50);
+
+    this.axis.draw(this.zeroMarginCanvas);
+    this.axis.updateSize(this.canvas, true);
+
+    // act
+    this.axis.resetApplyingAnimation(true);
+
+    this.translator.stub('translate').withArgs(1).returns(60);
+    this.translator.stub('translate').withArgs(4).returns(70);
+
+    this.axis.draw(this.zeroMarginCanvas);
+    this.axis.updateSize(this.canvas, true);
+    // assert
+
+    const rect = renderer.rect.lastCall.returnValue;
+    const text = renderer.text.lastCall.returnValue;
+
+    assert.notOk(rect.stub('animate').called);
+    assert.notOk(text.stub('animate').called);
+
+    assert.deepEqual(rect.attr.lastCall.args, [{
+        x: 60,
+        y: 30,
+        width: 10,
+        height: 40
+    }]);
+    assert.deepEqual(text.attr.lastCall.args, [{
+        x: 60,
+        y: 30
+    }]);
+});
+
+QUnit.test('Animate strip to the new position after updating, resetApplyingAnimation and drawing (T876376)', function(assert) {
+    // arrange
+    const renderer = this.renderer;
+    this.createAxis();
+    this.updateOptions({
+        isHorizontal: true,
+        strips: [{
+            color: 'lightgray',
+            startValue: 1,
+            endValue: 4,
+            label: {
+                text: 'text',
+                horizontalAlignment: 'left'
+            }
+        }]
+    });
+
+    this.translator.stub('translate').withArgs(1).returns(40);
+    this.translator.stub('translate').withArgs(4).returns(50);
+
+    const drawing = (firstDrawing) => {
+        this.axis.draw(this.zeroMarginCanvas);
+        this.axis.updateSize(this.canvas, true);
+
+        this.axis.resetApplyingAnimation(firstDrawing);
+
+        this.axis.draw(this.zeroMarginCanvas);
+        this.axis.updateSize(this.canvas, true);
+    };
+
+    drawing(true);
+
+    this.translator.stub('translate').withArgs(1).returns(60);
+    this.translator.stub('translate').withArgs(4).returns(70);
+    // update
+    drawing();
+
+    const rect = renderer.rect.lastCall.returnValue;
+    const text = renderer.text.lastCall.returnValue;
+
+    // assert
+    assert.equal(rect.stub('animate').callCount, 1);
+    assert.equal(text.stub('animate').callCount, 1);
+
+    assert.deepEqual(rect.attr.lastCall.args, [{
+        x: 40,
+        y: 30,
+        width: 10,
+        height: 40
+    }]);
+    assert.deepEqual(text.attr.lastCall.args, [{
+        x: 40,
+        y: 30
+    }]);
+
+    assert.deepEqual(rect.stub('animate').lastCall.args, [{
+        x: 60,
+        y: 30,
+        width: 10,
+        height: 40
+    }]);
+    assert.deepEqual(text.stub('animate').lastCall.args, [{
         x: 60,
         y: 30
     }]);

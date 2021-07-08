@@ -19,6 +19,7 @@ class DiagramContextMenuWrapper extends Widget {
         super._init();
 
         this._createOnVisibilityChangingAction();
+        this._createOnInternalCommand();
         this._createOnCustomCommand();
         this._createOnItemClickAction();
         this._tempState = undefined;
@@ -106,15 +107,18 @@ class DiagramContextMenuWrapper extends Widget {
             this._contextMenuInstance.hide();
         }
     }
-    _executeCommand(command, value) {
-        if(command === undefined) return;
-
+    _executeCommand(command, name, value) {
         if(typeof command === 'number') {
             this.bar.raiseBarCommandExecuted(command, value);
+        } else if(typeof command === 'string') {
+            this._onInternalCommandAction({ command });
         }
-        if(typeof command === 'string') {
-            this._onCustomCommandAction({ command });
+        if(name !== undefined) {
+            this._onCustomCommandAction({ name });
         }
+    }
+    _createOnInternalCommand() {
+        this._onInternalCommandAction = this._createActionByOption('onInternalCommand');
     }
     _createOnCustomCommand() {
         this._onCustomCommandAction = this._createActionByOption('onCustomCommand');
@@ -167,6 +171,9 @@ class DiagramContextMenuWrapper extends Widget {
             case 'onVisibilityChanging':
                 this._createOnVisibilityChangingAction();
                 break;
+            case 'onInternalCommand':
+                this._createOnInternalCommand();
+                break;
             case 'onCustomCommand':
                 this._createOnCustomCommand();
                 break;
@@ -175,6 +182,8 @@ class DiagramContextMenuWrapper extends Widget {
                 break;
             case 'commands':
                 this._invalidate();
+                break;
+            case 'export':
                 break;
             default:
                 super._optionChanged(args);

@@ -1,9 +1,11 @@
 import $ from 'jquery';
 import devices from 'core/devices';
+import support from 'core/utils/support';
 import fx from 'animation/fx';
 import ContextMenu from 'ui/context_menu';
 import * as eventUtils from 'events/utils';
 import contextMenuEvent from 'events/contextmenu';
+import holdEvent from 'events/hold';
 import { isRenderer } from 'core/utils/type';
 import config from 'core/config';
 import keyboardMock from '../../helpers/keyboardMock.js';
@@ -1435,6 +1437,34 @@ QUnit.module('Behavior', moduleConfig, () => {
         assert.ok(contextMenuEvent.isDefaultPrevented(), 'default prevented');
     });
 
+    QUnit.test('context menu should prevent default behavior if it shows on touch', function(assert) {
+        const originalTouch = support.touch;
+        const originalIsSimulator = devices.isSimulator;
+
+        try {
+            support.touch = true;
+            devices.isSimulator = function() { return true; };
+
+            const instance = new ContextMenu(this.$element, {
+                items: [{ text: 'item 1' }],
+                target: '#menuTarget',
+                visible: false
+            });
+
+            $('#menuTarget').trigger(holdEvent.name);
+
+            const $itemsContainer = instance.itemsContainer();
+            const $rootItem = $itemsContainer.find('.' + DX_SUBMENU_CLASS).eq(0);
+            const contextMenuEvent = $.Event('contextmenu', { pointerType: 'mouse', target: $rootItem.get(0) });
+            $('#menuTarget').trigger(contextMenuEvent);
+
+            assert.ok(contextMenuEvent.isDefaultPrevented(), 'default prevented');
+        } finally {
+            support.touch = originalTouch;
+            devices.isSimulator = originalIsSimulator;
+        }
+    });
+
     QUnit.test('onItemClick should fire for submenus', function(assert) {
         const itemClickArgs = [];
         const items = [{
@@ -1654,6 +1684,26 @@ QUnit.module('Aria accessibility', {
         helper.checkAttributes(helper.getItems().eq(1), { id: helper.focusedItemId, role: 'menuitem', tabindex: '-1' }, 'Items[0].items[0]');
         helper.checkAttributes(helper.getItems().eq(2), { role: 'menuitem', tabindex: '-1' }, 'Items[0],items[1]');
         helper.checkAttributes(helper.getItems().eq(3), { role: 'menuitem', tabindex: '-1' }, 'Items[1]');
+    });
+
+    // T927422
+    QUnit.test('Items: [{items[{}, {}], {}], any <li>, <ul> tags need role=none', function() {
+        helper.createWidget({
+            focusStateEnabled: true,
+            items: [{ text: 'Item1_1', items: [{ text: 'Item2_1' }, { text: 'Item2_2' }] }, { text: 'item1_2' }]
+        });
+
+        helper.widget.show();
+
+        keyboardMock(helper.widget.itemsContainer()).keyDown('down');
+        keyboardMock(helper.widget.itemsContainer()).keyDown('right');
+
+        helper.checkAttributes(helper.widget._overlay.$content().find('ul'), { role: 'none' }, 'Items[1]');
+        const $listItems = helper.widget._overlay.$content().find('li');
+
+        $listItems.each((_, listItem) => {
+            helper.checkAttributes($(listItem), { role: 'none' }, 'list item');
+        });
     });
 });
 
@@ -2224,6 +2274,50 @@ QUnit.module('Keyboard navigation', moduleConfig, () => {
         assert.strictEqual(focusedItem.is(instance.option('focusedElement')), true, 'focusedElement');
         assert.strictEqual(getFocusedItemText(instance), 'Item 1', 'focusedItem text');
         assert.strictEqual(getVisibleSubmenuCount(instance), 1, 'submenu.count');
+    });
+
+    [
+        (menu, keyboard) => menu.hide(),
+        (menu, keyboard) => keyboard.keyDown('esc')
+    ].forEach(hideFunction => {
+        QUnit.test(`FocusedElement should be cleaned when context menu was hidden by ${hideFunction} function (T952882)`, function(assert) {
+            const menu = new ContextMenu(this.$element, {
+                items: [{ text: 'Item 1' }, { text: 'Item 2' }, { text: 'Item 3' } ],
+                focusStateEnabled: true
+            });
+            menu.show();
+
+            const keyboard = keyboardMock(menu.itemsContainer());
+            keyboard.keyDown('down');
+
+            hideFunction(menu, keyboard);
+            assert.strictEqual(menu.option('focusedElement'), null);
+        });
+    });
+
+    QUnit.test('vertical keyboard navigation works cyclically (T952882)', function(assert) {
+        const instance = new ContextMenu(this.$element, {
+            items: [
+                { text: 'item 1' },
+                { text: 'item 2', items: [{ text: 'item 21' }, { text: 'item 22' }, { text: 'item 23' }] },
+                { text: 'item 3' }
+            ],
+            focusStateEnabled: true
+        });
+
+        instance.show();
+
+        keyboardMock(instance.itemsContainer())
+            .keyDown('down')
+            .keyDown('down')
+            .keyDown('right')
+            .keyDown('up')
+            .keyDown('up')
+            .keyDown('up')
+            .keyDown('up')
+            .keyDown('up');
+
+        assert.equal($(instance.option('focusedElement')).text(), 'item 22');
     });
 });
 

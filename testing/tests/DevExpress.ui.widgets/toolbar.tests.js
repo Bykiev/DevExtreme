@@ -9,6 +9,9 @@ import fx from 'animation/fx';
 import resizeCallbacks from 'core/utils/resize_callbacks';
 import themes from 'ui/themes';
 import eventsEngine from 'events/core/events_engine';
+import { deferUpdate } from 'core/utils/common';
+
+import 'ui/button_group';
 
 import 'common.css!';
 import 'ui/button';
@@ -41,10 +44,13 @@ const TOOLBAR_LABEL_CLASS = 'dx-toolbar-label';
 const TOOLBAR_MENU_BUTTON_CLASS = 'dx-toolbar-menu-button';
 const TOOLBAR_MENU_SECTION_CLASS = 'dx-toolbar-menu-section';
 const LIST_ITEM_CLASS = 'dx-list-item';
-
+const BUTTON_GROUP_CLASS = 'dx-buttongroup';
+const TEXTEDITOR_CLASS = 'dx-texteditor';
 
 const DROP_DOWN_MENU_CLASS = 'dx-dropdownmenu';
 const DROP_DOWN_MENU_POPUP_WRAPPER_CLASS = 'dx-dropdownmenu-popup-wrapper';
+
+const BASE_TEXTEDITOR_WIDTH = '150px';
 
 QUnit.module('render', {
     beforeEach: function() {
@@ -275,6 +281,71 @@ QUnit.module('render', {
         assert.ok(templateUsed);
         assert.equal(this.element.find('.custom-template').length, 1);
     });
+
+
+    [true, false].forEach(deferRendering => {
+        function renderToolbar(container, toolbarItems) {
+            const renderer = deferRendering
+                ? (func) => deferUpdate(() => func(), 100)
+                : (func) => func();
+
+            renderer(() => {
+                $(container).dxToolbar({
+                    items: toolbarItems
+                });
+            });
+        }
+
+        QUnit.test(`Toolbar menu icon rendered correctly in asynchronous template. Second item located in menu, deferRendering=${deferRendering}.`, function(assert) {
+            renderToolbar(this.element, [{
+                location: 'after',
+                locateInMenu: 'never',
+                text: 'item1'
+            }, {
+                location: 'after',
+                locateInMenu: 'always',
+                text: 'item2'
+            }]);
+
+            const toolbarItems = this.element.find('.dx-toolbar-after').children();
+            assert.equal(toolbarItems.length, 2, 'All items are rendered');
+
+            assert.equal(toolbarItems[0].innerText.trim(), 'item1', 'first item is simple item');
+            assert.equal(toolbarItems[1].innerText.trim(), '', 'second item is menu button');
+        });
+
+        QUnit.test(`Toolbar simple items rendered correctly in asynchronous template. Items position: before, deferRendering=${deferRendering}.`, function(assert) {
+            renderToolbar(this.element, [{
+                location: 'before',
+                locateInMenu: 'never',
+                text: 'item1'
+            }, {
+                location: 'before',
+                locateInMenu: 'never',
+                text: 'item2'
+            } ]);
+
+            const toolbarItems = this.element.find('.dx-toolbar-before').children();
+            assert.equal(toolbarItems[0].innerText.trim(), 'item1', 'first item is simple item');
+            assert.equal(toolbarItems[1].innerText.trim(), 'item2', 'second item is simple item');
+        });
+
+        QUnit.test(`Toolbar simple items rendered correctly in asynchronous template. Items position: after, deferRendering=${deferRendering}.`, function(assert) {
+            renderToolbar(this.element, [{
+                location: 'after',
+                locateInMenu: 'never',
+                text: 'item1'
+            }, {
+                location: 'after',
+                locateInMenu: 'never',
+                text: 'item2'
+            } ]);
+
+            const toolbarItems = this.element.find('.dx-toolbar-after').children();
+            assert.equal(toolbarItems[0].innerText.trim(), 'item1', 'first item is simple item');
+            assert.equal(toolbarItems[1].innerText.trim(), 'item2', 'second item is simple item');
+        });
+    });
 });
 
 QUnit.module('Deprecated options', {
@@ -422,11 +493,11 @@ QUnit.module('disabled state', () => {
                     [true, false].forEach((changeDisabledOrder) => {
                         ['never', 'always'].forEach((locateInMenu) => {
                             QUnit.test(`new dxToolbar({
-                                    toolbar.disabled: ${isToolbarDisabled}, 
-                                    button.disabled: ${isButtonDisabled}), 
-                                    toolbar.disabled new: ${isToolbarDisabledNew}, 
-                                    button.disabled new: ${isButtonDisabledNew}, 
-                                    changeDisableOrder: ${changeDisabledOrder}, 
+                                    toolbar.disabled: ${isToolbarDisabled},
+                                    button.disabled: ${isButtonDisabled}),
+                                    toolbar.disabled new: ${isToolbarDisabledNew},
+                                    button.disabled new: ${isButtonDisabledNew},
+                                    changeDisableOrder: ${changeDisabledOrder},
                                     locateInMenu: ${locateInMenu}`,
                             function(assert) {
                                 const itemClickHandler = sinon.spy();
@@ -666,6 +737,42 @@ QUnit.module('widget sizing render', () => {
         assert.equal(parseInt($center.css('margin-right')), 60);
         assert.equal($center.css('float'), 'none');
         assert.equal($center.width(), 230);
+    });
+
+    [
+        {
+            caseName: 'default toolbar TextEditor rendering',
+            itemConfig: {
+                widget: 'dxTextBox'
+            },
+            expectedResult: true
+        },
+        {
+            caseName: 'item template with the TextEditor at the root level',
+            itemConfig: {
+                template: () => $('<div>').dxTextBox()
+            },
+            expectedResult: true
+        },
+        {
+            caseName: 'item template with wrapped TextEditor (complex templates etc)',
+            itemConfig: {
+                template: () => $('<div>').append($('<div>').dxTextBox())
+            },
+            expectedResult: false
+        }
+    ].forEach(({ caseName, itemConfig, expectedResult }) => {
+        QUnit.test(`TextEditor sizing: ${caseName}`, function(assert) {
+            const $element = $('#widget').dxToolbar({
+                items: [itemConfig],
+                width: 400
+            });
+
+            const editorCssWidth = $element.find(`.${TEXTEDITOR_CLASS}`).css('width');
+            const isStandardWidth = editorCssWidth === BASE_TEXTEDITOR_WIDTH;
+
+            assert.strictEqual(isStandardWidth, expectedResult);
+        });
     });
 });
 
@@ -1136,6 +1243,33 @@ QUnit.module('adaptivity', {
         assert.equal($section.find('.dx-toolbar-menu-action').length, 1, 'click on button should close menu');
         assert.equal($section.find('.dx-toolbar-hidden-button').length, 1, 'button has specific class for override styles');
         assert.equal($section.find('.dx-list-item').text(), 'test text', 'button text was rendered');
+    });
+
+    QUnit.test('buttonGroup.locateInMenu: auto -> toolbar.setWidth(100) -> toolbar.openMenu', function(assert) {
+        const toolbar = $('#widget').dxToolbar({
+            items: [
+                { locateInMenu: 'never', template: function() { return $('<div>').width(100); } },
+                { locateInMenu: 'auto', widget: 'dxButtonGroup', options: { width: 100, items: [ { text: 'text1' } ] } }
+            ]
+        }).dxToolbar('instance');
+
+        const getButtonGroupToolbarItem = () => toolbar.$element().find(`.${BUTTON_GROUP_CLASS}`).closest(`.${TOOLBAR_ITEM_CLASS}`);
+
+        let $buttonGroupToolbarItem = getButtonGroupToolbarItem();
+        assert.equal($buttonGroupToolbarItem.hasClass(TOOLBAR_ITEM_INVISIBLE_CLASS), false, 'buttonGroup is visible in toolbar');
+
+        toolbar.option('width', 100);
+        $buttonGroupToolbarItem = getButtonGroupToolbarItem();
+        assert.equal($buttonGroupToolbarItem.hasClass(TOOLBAR_ITEM_INVISIBLE_CLASS), true, 'buttonGroup is hidden in toolbar');
+
+        const done = assert.async();
+        const $dropDown = toolbar.$element().find('.' + DROP_DOWN_MENU_CLASS);
+        const dropDown = $dropDown.dxDropDownMenu('instance');
+        dropDown.option('onItemRendered', function(args) {
+            assert.equal($(args.itemElement).find(`.${BUTTON_GROUP_CLASS}`).length, 1, 'button group was rendered in menu');
+            done();
+        });
+        dropDown.open();
     });
 
     QUnit.test('overflow item should rendered with correct template in menu and in toolbar', function(assert) {

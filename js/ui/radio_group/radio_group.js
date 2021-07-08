@@ -2,6 +2,7 @@ import $ from '../../core/renderer';
 import { extend } from '../../core/utils/extend';
 import devices from '../../core/devices';
 import { deferRender } from '../../core/utils/common';
+import { isDefined } from '../../core/utils/type';
 import inkRipple from '../widget/utils.ink_ripple';
 import registerComponent from '../../core/component_registrator';
 import CollectionWidget from '../collection/ui.collection_widget.edit';
@@ -197,6 +198,10 @@ class RadioGroup extends Editor {
         }
     }
 
+    _setSelection(currentValue) {
+        this._setCollectionWidgetOption('selectedItemKeys', [this._unwrappedValue(currentValue)]);
+    }
+
     _optionChanged(args) {
         const { name, value } = args;
 
@@ -204,6 +209,7 @@ class RadioGroup extends Editor {
 
         switch(name) {
             case 'useInkRipple':
+            case 'dataSource':
                 this._invalidate();
                 break;
             case 'focusStateEnabled':
@@ -215,18 +221,17 @@ class RadioGroup extends Editor {
                 super._optionChanged(args);
                 this._setCollectionWidgetOption(name, value);
                 break;
-            case 'dataSource':
-                this._setCollectionWidgetOption('dataSource', this._dataSource);
-                break;
             case 'valueExpr':
                 this._setCollectionWidgetOption('keyExpr', this._getCollectionKeyExpr());
                 break;
             case 'value':
-                this._setCollectionWidgetOption('selectedItemKeys', [value]);
+                this._setSelection(value);
                 this._setSubmitValue(value);
                 super._optionChanged(args);
                 break;
             case 'items':
+                this._setSelection(this.option('value'));
+                break;
             case 'itemTemplate':
             case 'displayExpr':
                 break;
@@ -263,22 +268,37 @@ class RadioGroup extends Editor {
     _renderRadios() {
         this._areRadiosCreated = new Deferred();
         const $radios = $('<div>').appendTo(this.$element());
+        const {
+            value,
+            displayExpr,
+            accessKey,
+            focusStateEnabled,
+            itemTemplate,
+            tabIndex,
+            valueExpr
+        } = this.option();
+        const isNullSelectable = valueExpr !== 'this';
 
-        this._radios = this._createComponent($radios, RadioCollection, {
-            displayExpr: this.option('displayExpr'),
-            accessKey: this.option('accessKey'),
+        this._createComponent($radios, RadioCollection, {
+            onInitialized: ({ component }) => {
+                this._radios = component;
+            },
+            onContentReady: (e) => {
+                this._fireContentReadyAction(true);
+            },
+            onItemClick: this._itemClickHandler.bind(this),
+            displayExpr,
+            accessKey,
             dataSource: this._dataSource,
-            focusStateEnabled: this.option('focusStateEnabled'),
-            itemTemplate: this.option('itemTemplate'),
+            focusStateEnabled,
+            itemTemplate,
             keyExpr: this._getCollectionKeyExpr(),
             noDataText: '',
-            onContentReady: () => this._fireContentReadyAction(true),
-            onItemClick: this._itemClickHandler.bind(this),
             scrollingEnabled: false,
             selectionByClick: false,
             selectionMode: 'single',
-            selectedItemKeys: [this.option('value')],
-            tabIndex: this.option('tabIndex')
+            selectedItemKeys: isNullSelectable || isDefined(value) ? [value] : [],
+            tabIndex
         });
         this._areRadiosCreated.resolve();
     }
@@ -297,7 +317,7 @@ class RadioGroup extends Editor {
     }
 
     _setSubmitValue(value) {
-        value = value || this.option('value');
+        value = value ?? this.option('value');
 
         const submitValue = this.option('valueExpr') === 'this' ? this._displayGetter(value) : value;
 
@@ -332,11 +352,11 @@ class RadioGroup extends Editor {
     }
 
     focus() {
-        this._radios && this._radios.focus();
+        this._radios?.focus();
     }
 
     itemElements() {
-        return this._radios.itemElements();
+        return this._radios?.itemElements();
     }
 }
 

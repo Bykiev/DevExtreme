@@ -1,4 +1,4 @@
-import { createWrapper, initTestMarkup, isDesktopEnvironment } from './helpers.js';
+import { createWrapper, initTestMarkup, isDesktopEnvironment, CLASSES } from './helpers.js';
 
 import 'common.css!';
 import 'generic_light.css!';
@@ -126,24 +126,55 @@ module('Views:startDate property', () => {
                 height: 580
             });
 
+            const { navigator } = scheduler.header;
 
             assert.equal(scheduler.appointments.find(data[0].text).length, 1, `appointment '${data[0].text}' should render`);
             assert.equal(scheduler.appointments.find(data[1].text).length, 1, `appointment '${data[1].text}' should render`);
 
             assert.equal(scheduler.workSpace.getCell(1, 3).children().text(), '06', 'cell date should be equal 6');
 
-            scheduler.navigator.clickOnNextButton();
+            navigator.nextButton.click();
 
             assert.equal(scheduler.appointments.find(data[0].text).length, 0, `appointment '${data[0].text}' shouldn't render after change navigator on next month`);
             assert.equal(scheduler.appointments.find(data[1].text).length, 1, `appointment '${data[1].text}' should render after change navigator on next month`);
 
             assert.equal(scheduler.workSpace.getCell(1, 3).children().text(), '11', 'cell date should be equal 11 after change navigator on next month');
 
-            scheduler.navigator.clickOnPrevButton();
-            scheduler.navigator.clickOnPrevButton();
+            navigator.prevButton.click();
+            navigator.prevButton.click();
 
             assert.equal(scheduler.appointments.find(data[0].text).length, 1, `appointment '${data[0].text}' should render after change navigator on two months ago`);
             assert.equal(scheduler.appointments.find(data[1].text).length, 0, `appointment '${data[1].text}' shouldn't render after change navigator two months ago`);
+        });
+    });
+});
+
+module('common', () => {
+    [false, true].forEach(rtlEnabled => {
+        test('padding of appointments element in agenda view should be equal 70px if component has small width (T923866)', function(assert) {
+            const data = [{
+                text: 'Google AdWords Strategy',
+                startDate: new Date(2019, 10, 1, 9, 0, 0),
+                endDate: new Date(2019, 10, 1, 10, 30, 0)
+            }];
+
+            const scheduler = createWrapper({
+                dataSource: data,
+                views: ['agenda'],
+                currentView: 'agenda',
+                currentDate: new Date(2019, 10, 1),
+                height: 580,
+
+                width: 300,
+                rtlEnabled: rtlEnabled
+            });
+
+            const rootElement = scheduler.getElement();
+            const appointmentsElement = rootElement.find(CLASSES.scrollableAppointmentsContainer);
+            const paddingProperty = rtlEnabled ? 'padding-right' : 'padding-left';
+
+            assert.ok(rootElement.is(CLASSES.schedulerSmall), 'scheduler should has "dx-scheduler-small" class name if size 300px');
+            assert.equal(appointmentsElement.css(paddingProperty), '70px', `${paddingProperty} should be equal 70px`);
         });
     });
 });

@@ -1,5 +1,5 @@
-import { addNamespace, normalizeKeyName } from '../../events/utils';
-import { isFunction } from '../../core/utils/type';
+import { addNamespace, normalizeKeyName, isCommandKeyPressed } from '../../events/utils';
+import { isFunction, isString, isDate, isDefined } from '../../core/utils/type';
 import { clipboardText } from '../../core/utils/dom';
 import { extend } from '../../core/utils/extend';
 import { fitIntoRange } from '../../core/utils/math';
@@ -9,11 +9,11 @@ import { getDatePartIndexByPosition, renderDateParts } from './ui.date_box.mask.
 import dateLocalization from '../../localization/date';
 import { getRegExpInfo } from '../../localization/ldml/date.parser';
 import { getFormat } from '../../localization/ldml/date.format';
-import { isString } from '../../core/utils/type';
 import { sign } from '../../core/utils/math';
 import DateBoxBase from './ui.date_box.base';
 import numberLocalization from '../../localization/number';
 import devices from '../../core/devices';
+import browser from '../../core/utils/browser';
 
 const MASK_EVENT_NAMESPACE = 'dateBoxMask';
 const FORWARD = 1;
@@ -124,9 +124,18 @@ const DateBoxMask = DateBoxBase.inherit({
         });
     },
 
-    _isSingleCharKey(e) {
-        const key = e.originalEvent.data || e.originalEvent.key;
-        return typeof key === 'string' && key.length === 1 && !e.ctrl && !e.alt;
+    _isSingleCharKey({ originalEvent, alt }) {
+        const key = originalEvent.data || (
+            normalizeKeyName(originalEvent) === 'space' ? // IE11 (T972456)
+                ' ' :
+                originalEvent.key
+        );
+        return typeof key === 'string' && key.length === 1 && !alt && !isCommandKeyPressed(originalEvent);
+    },
+
+    _isSingleDigitKey(e) {
+        const data = e.originalEvent?.data;
+        return data?.length === 1 && parseInt(data, 10);
     },
 
     _useBeforeInputEvent: function() {
@@ -135,17 +144,24 @@ const DateBoxMask = DateBoxBase.inherit({
     },
 
     _keyboardHandler(e) {
-        const key = e.originalEvent.key;
+        let key = e.originalEvent.key;
 
         const result = this.callBase(e);
 
-        if(!this._useMaskBehavior() || this._useBeforeInputEvent() || !this._isSingleCharKey(e)) {
+        if(!this._useMaskBehavior() || this._useBeforeInputEvent()) {
             return result;
         }
 
-        this._processInputKey(key);
-
-        e.originalEvent.preventDefault();
+        if((browser.chrome) && e.key === 'Process' && e.code.indexOf('Digit') === 0) {
+            key = e.code.replace('Digit', '');
+            this._processInputKey(key);
+            this._maskInputHandler = () => {
+                this._renderSelectedPart();
+            };
+        } else if(this._isSingleCharKey(e)) {
+            this._processInputKey(key);
+            e.originalEvent.preventDefault();
+        }
 
         return result;
     },
@@ -157,8 +173,7 @@ const DateBoxMask = DateBoxBase.inherit({
 
         if(inputType === 'insertCompositionText') {
             this._maskInputHandler = () => {
-                this._renderDisplayText(this._getDisplayedText(this._maskValue));
-                this._selectNextPart();
+                this._renderSelectedPart();
             };
         }
 
@@ -183,6 +198,12 @@ const DateBoxMask = DateBoxBase.inherit({
     },
 
     _keyPressHandler(e) {
+        const { originalEvent: event } = e;
+        if(event?.inputType === 'insertCompositionText' && this._isSingleDigitKey(e)) {
+            this._processInputKey(event.data);
+            this._renderDisplayText(this._getDisplayedText(this._maskValue));
+            this._selectNextPart();
+        }
         this.callBase(e);
 
         if(this._maskInputHandler) {
@@ -344,7 +365,9 @@ const DateBoxMask = DateBoxBase.inherit({
 
         if(text) {
             this._dateParts = renderDateParts(text, this._regExpInfo);
-            this._isFocused() && this._selectNextPart();
+            if(!this._input().is(':hidden')) {
+                this._selectNextPart();
+            }
         }
     },
 
@@ -356,13 +379,19 @@ const DateBoxMask = DateBoxBase.inherit({
         eventsEngine.on(this._input(), addNamespace('dxclick', MASK_EVENT_NAMESPACE), this._maskClickHandler.bind(this));
         eventsEngine.on(this._input(), addNamespace('paste', MASK_EVENT_NAMESPACE), this._maskPasteHandler.bind(this));
         eventsEngine.on(this._input(), addNamespace('drop', MASK_EVENT_NAMESPACE), () => {
-            this._renderDisplayText(this._getDisplayedText(this._maskValue));
-            this._selectNextPart();
+            this._renderSelectedPart();
         });
+
+        eventsEngine.on(this._input(), addNamespace('compositionend', MASK_EVENT_NAMESPACE), this._maskCompositionEndHandler.bind(this));
 
         if(this._useBeforeInputEvent()) {
             eventsEngine.on(this._input(), addNamespace('beforeinput', MASK_EVENT_NAMESPACE), this._maskBeforeInputHandler.bind(this));
         }
+    },
+
+    _renderSelectedPart() {
+        this._renderDisplayText(this._getDisplayedText(this._maskValue));
+        this._selectNextPart();
     },
 
     _selectLastPart() {
@@ -467,6 +496,10 @@ const DateBoxMask = DateBoxBase.inherit({
 
     _saveMaskValue() {
         const value = this._maskValue && new Date(this._maskValue);
+        if(value && this.option('type') === 'date') {
+            value.setHours(0, 0, 0, 0);
+        }
+
         this._initialMaskValue = new Date(value);
         this.dateOption('value', value);
     },
@@ -515,7 +548,27 @@ const DateBoxMask = DateBoxBase.inherit({
     _maskClickHandler() {
         if(this.option('text')) {
             this._activePartIndex = getDatePartIndexByPosition(this._dateParts, this._caret().start);
-            this._caret(this._getActivePartProp('caret'));
+
+            if(isDefined(this._activePartIndex)) {
+                this._caret(this._getActivePartProp('caret'));
+            } else {
+                this._selectLastPart();
+            }
+        }
+    },
+
+    _maskCompositionEndHandler(e) {
+        if(browser.msie && this._isSingleDigitKey(e)) {
+            const key = e.originalEvent.data;
+            this._processInputKey(key);
+
+        } else {
+            this._input().val(this._getDisplayedText(this._maskValue));
+            this._selectNextPart();
+
+            this._maskInputHandler = () => {
+                this._renderSelectedPart();
+            };
         }
     },
 
@@ -523,7 +576,7 @@ const DateBoxMask = DateBoxBase.inherit({
         const newText = this._replaceSelectedText(this.option('text'), this._caret(), clipboardText(e));
         const date = dateLocalization.parse(newText, this._getFormatPattern());
 
-        if(date) {
+        if(date && this._isDateValid(date)) {
             this._maskValue = date;
             this._renderDisplayText(this._getDisplayedText(this._maskValue));
             this._renderDateParts();
@@ -531,6 +584,10 @@ const DateBoxMask = DateBoxBase.inherit({
         }
 
         e.preventDefault();
+    },
+
+    _isDateValid(date) {
+        return isDate(date) && !isNaN(date);
     },
 
     _isValueDirty() {

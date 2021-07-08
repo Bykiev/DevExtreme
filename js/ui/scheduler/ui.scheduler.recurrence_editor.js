@@ -2,7 +2,6 @@ import $ from '../../core/renderer';
 import Guid from '../../core/guid';
 import registerComponent from '../../core/component_registrator';
 import recurrenceUtils from './utils.recurrence';
-import domUtils from '../../core/utils/dom';
 import { isDefined } from '../../core/utils/type';
 import { extend } from '../../core/utils/extend';
 import { each } from '../../core/utils/iterator';
@@ -144,10 +143,10 @@ const RecurrenceEditor = Editor.inherit({
             /**
             * @name dxRecurrenceEditorOptions.startDate
             * @type Date
-            * @default undefined
+            * @default new Date()
             * @hidden
             */
-            startDate: undefined,
+            startDate: new Date(),
 
             /**
             * @name dxRecurrenceEditorOptions.firstDayOfWeek
@@ -186,21 +185,9 @@ const RecurrenceEditor = Editor.inherit({
             .appendTo(this.$element());
 
         this._renderEditors();
-        this._renderContainerVisibility(this.option('value'));
     },
 
-    _renderContainerVisibility(value) {
-        if(value) {
-            this._$container.show();
-            domUtils.triggerShownEvent(this._$container);
-        } else {
-            this._$container.hide();
-        }
-    },
-
-    _changeValueByVisibility(value) {
-        this._renderContainerVisibility(value);
-
+    changeValueByVisibility(value) {
         if(value) {
             if(!this.option('value')) {
                 this._handleDefaults();
@@ -381,10 +368,14 @@ const RecurrenceEditor = Editor.inherit({
 
     _renderRepeatOnWeekEditor() {
         const firstDayOfWeek = this._getFirstDayOfWeek();
-        const byDay = this._recurrenceRule.rules()['byday'] ?
-            this._recurrenceRule.rules()['byday'].split(',') : days[firstDayOfWeek];
-        const that = this;
-        const itemsButtonGroup = days.slice(firstDayOfWeek).concat(days.slice(0, firstDayOfWeek)).map(item => { return { text: item }; });
+        const byDayRule = this._recurrenceRule.rules()['byday'];
+        const byDay = byDayRule?.length ?
+            byDayRule.split(',') : days[firstDayOfWeek];
+
+        const localDaysNames = dateLocalization.getDayNames('abbreviated');
+        const dayNames = days.slice(firstDayOfWeek).concat(days.slice(0, firstDayOfWeek));
+
+        const itemsButtonGroup = localDaysNames.slice(firstDayOfWeek).concat(localDaysNames.slice(0, firstDayOfWeek)).map((item, index) => { return { text: item, key: dayNames[index] }; });
 
         this._$repeatOnWeek = $('<div>').addClass(RECURRENCE_BUTTON_GROUP).appendTo(this._$repeatOnEditor);
 
@@ -392,9 +383,10 @@ const RecurrenceEditor = Editor.inherit({
             items: itemsButtonGroup,
             selectionMode: 'multiple',
             selectedItemKeys: byDay,
+            keyExpr: 'key',
             onSelectionChanged: (e) => {
                 const selectedKeys = e.component.option('selectedItemKeys');
-                that._recurrenceRule.makeRule('byday', selectedKeys);
+                this._recurrenceRule.makeRule('byday', selectedKeys);
                 this._changeEditorValue();
             }
         });
@@ -767,10 +759,6 @@ const RecurrenceEditor = Editor.inherit({
                 if(this._$repeatDateEditor) {
                     this._repeatUntilDate.option('calendarOptions.firstDayOfWeek', this._getFirstDayOfWeek());
                 }
-                break;
-            case 'visible':
-                this._changeValueByVisibility(args.value);
-                this.callBase(args);
                 break;
             default:
                 this.callBase(args);

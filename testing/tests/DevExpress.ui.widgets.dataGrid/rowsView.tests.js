@@ -2016,7 +2016,7 @@ QUnit.module('Rows view', {
         $testElement.height(300);
         const oldFunc = rowsView._renderScrollable;
         rowsView._renderScrollable = function() {
-            oldTableHeight = this._getTableElement().height();
+            oldTableHeight = this.getTableElement().height();
             oldFunc.call(rowsView);
         };
 
@@ -2612,8 +2612,8 @@ QUnit.module('Rows view', {
 
         assert.ok(!$(testElement.find('tbody > tr')[2]).hasClass('dx-group-row'));
         assert.equal($(testElement.find('tbody > tr')[2]).find('td').length, 3);
-        assert.equal($(testElement.find('tbody > tr')[2]).find('td').first().text(), '');
-        assert.equal($($(testElement.find('tbody > tr')[2]).find('td')[1]).text(), '');
+        assert.equal($(testElement.find('tbody > tr')[2]).find('td').first().text(), '\u00A0');
+        assert.equal($($(testElement.find('tbody > tr')[2]).find('td')[1]).text(), '\u00A0');
         assert.equal($(testElement.find('tbody > tr')[2]).find('td').last().text(), '3');
     });
 
@@ -3925,9 +3925,14 @@ QUnit.module('Rows view', {
 
         // act
         rowsView.render($testElement);
+        const columnWidths = rowsView.getColumnWidths();
+        const values = [30, 100, 100];
 
         // assert
-        assert.deepEqual(rowsView.getColumnWidths(), [30, 100, 100], 'calculate widths');
+        assert.strictEqual(columnWidths.length, values.length, 'number of widths');
+        columnWidths.forEach((width, index) => {
+            assert.roughEqual(width, values[index], 0.02, `calculate width of the ${index} column`);
+        });
     });
 
     QUnit.test('GetRowsElements method is called once when opacity is applied to rows', function(assert) {
@@ -3988,8 +3993,8 @@ QUnit.module('Rows view with real dataController and columnController', {
             scrolling: {}
         };
 
-        this.setupDataGridModules = function() {
-            setupDataGridModules(this, ['data', 'columns', 'rows', 'grouping', 'virtualScrolling', 'pager', 'summary', 'masterDetail'], {
+        this.setupDataGridModules = function(modules) {
+            setupDataGridModules(this, modules || ['data', 'columns', 'rows', 'grouping', 'virtualScrolling', 'pager', 'summary', 'masterDetail'], {
                 initViews: true
             });
         };
@@ -5429,6 +5434,111 @@ QUnit.module('Rows view with real dataController and columnController', {
         } finally {
             clock.restore();
         }
+    });
+
+    QUnit.test('Continuation text in an expanded group row should be updated when repaintChangesOnly is enabled (T893032)', function(assert) {
+        const clock = sinon.useFakeTimers();
+        const $testElement = $('#container');
+        this.options = {
+            dataSource: {
+                store: {
+                    type: 'array',
+                    data: [{
+                        id: 1,
+                        name: 'name1',
+                        category: 'category'
+                    },
+                    {
+                        id: 2,
+                        name: 'name2',
+                        category: 'category'
+                    }],
+                    key: 'id'
+                }
+            },
+            repaintChangesOnly: true,
+            grouping: {
+                autoExpandAll: true,
+                texts: {
+                    groupContinuesMessage: 'continues text',
+                    groupContinuedMessage: 'continued text'
+                }
+            },
+            paging: {
+                pageSize: 2
+            },
+            columns: ['id', 'name', {
+                dataField: 'category',
+                groupIndex: 0
+            }]
+        };
+
+        // act
+        this.setupDataGridModules();
+        this.rowsView.render($testElement);
+        clock.tick();
+
+        let firstItem = this.dataController.items()[0];
+
+        // assert
+        assert.equal(firstItem.rowType, 'group');
+        assert.deepEqual(firstItem.key, ['category']);
+        assert.notOk(firstItem.cells[1].groupContinuedMessage, 'continued text is not defined');
+        assert.ok(firstItem.cells[1].groupContinuesMessage, 'continues text is defined');
+
+        this.pageIndex(1);
+        clock.tick();
+
+        // act
+        firstItem = this.dataController.items()[0];
+
+        // assert
+        assert.equal(firstItem.rowType, 'group');
+        assert.deepEqual(firstItem.key, ['category']);
+        assert.notOk(firstItem.cells[1].groupContinuesMessage, 'continues text is not defined');
+        assert.ok(firstItem.cells[1].groupContinuedMessage, 'continued text is defined');
+
+        clock.restore();
+    });
+
+    // T969363
+    ['form', 'popup'].forEach(editMode => {
+        QUnit.test(`Column name should not be highlighted in form (${editMode} edit mode)`, function(assert) {
+            const clock = sinon.useFakeTimers();
+            const $testElement = $('#container');
+
+            // arrange
+            this.options = {
+                dataSource: [{ test: 'test' }],
+                searchPanel: {
+                    highlightSearchText: true,
+                    text: 'test'
+                },
+                editing: {
+                    mode: editMode,
+                    allowUpdating: true
+                }
+            };
+
+            this.setupDataGridModules(['data', 'columns', 'rows', 'editing', 'editorFactory', 'masterDetail', 'search']);
+            this.rowsView.render($testElement);
+            clock.tick();
+
+            this.$element = () => {
+                return $testElement;
+            };
+
+            // act
+            this.editRow(0);
+            clock.tick();
+
+            // assert
+            const $form = $('.dx-form');
+            assert.ok($form.length, 'form was rendered');
+            assert.notOk($form.find('.dx-datagrid-search-text').length, 'no search text');
+
+            clock.restore();
+        });
     });
 });
 

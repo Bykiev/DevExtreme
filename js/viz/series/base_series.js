@@ -548,7 +548,7 @@ Series.prototype = {
         that._applyVisibleArea();
         that._setGroupsSettings(animationEnabled, firstDrawing);
 
-        !firstDrawing && that._drawElements(false, firstDrawing, false);
+        !firstDrawing && !that._resetApplyingAnimation && that._drawElements(false, firstDrawing, false);
         that._drawElements(animationEnabled, firstDrawing, true);
 
         hideLayoutLabels && that.hideLabels();
@@ -560,6 +560,7 @@ Series.prototype = {
         } else {
             that._applyStyle(that._styles.normal);
         }
+        that._resetApplyingAnimation = false;
     },
 
     _setLabelGroupSettings: function(animationEnabled) {
@@ -654,6 +655,13 @@ Series.prototype = {
 
     isStackedSeries: function() {
         return this.type.indexOf('stacked') === 0;
+    },
+
+    resetApplyingAnimation: function(isFirstDrawing) {
+        this._resetApplyingAnimation = true;
+        if(isFirstDrawing) {
+            this._firstDrawing = true;
+        }
     },
 
     isFinancialSeries: function() {
@@ -862,7 +870,7 @@ Series.prototype = {
                 }, {});
 
                 data.forEach(dataItem => {
-                    groups[dataItem.argument].push(dataItem);
+                    groups[dataItem.argument.valueOf()].push(dataItem);
                 });
 
                 return categories.reduce((result, c) => {
@@ -870,7 +878,7 @@ Series.prototype = {
                         aggregationInterval: null,
                         intervalStart: c,
                         intervalEnd: c,
-                        data: groups[c].map(getData)
+                        data: groups[c.valueOf()].map(getData)
                     }, that));
                     return result;
                 }, []);

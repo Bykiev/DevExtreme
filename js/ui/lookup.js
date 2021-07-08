@@ -10,6 +10,7 @@ const inkRipple = require('./widget/utils.ink_ripple');
 const messageLocalization = require('../localization/message');
 const devices = require('../core/devices');
 const registerComponent = require('../core/component_registrator');
+const { isDefined } = require('../core/utils/type');
 const eventUtils = require('../events/utils');
 const DropDownList = require('./drop_down_editor/ui.drop_down_list');
 const themes = require('./themes');
@@ -18,6 +19,7 @@ const Popover = require('./popover');
 const TextBox = require('./text_box');
 const ChildDefaultTemplate = require('../core/templates/child_default_template').ChildDefaultTemplate;
 const translator = require('../animation/translator');
+const { getElementWidth } = require('./drop_down_editor/utils');
 
 const LOOKUP_CLASS = 'dx-lookup';
 const LOOKUP_SEARCH_CLASS = 'dx-lookup-search';
@@ -33,9 +35,11 @@ const LOOKUP_EMPTY_CLASS = 'dx-lookup-empty';
 const LOOKUP_POPOVER_FLIP_VERTICAL_CLASS = 'dx-popover-flipped-vertical';
 const TEXTEDITOR_INPUT_CLASS = 'dx-texteditor-input';
 
+const LIST_ITEM_CLASS = 'dx-list-item';
 const LIST_ITEM_SELECTED_CLASS = 'dx-list-item-selected';
+const GROUP_LIST_HEADER_CLASS = 'dx-list-group-header';
 
-const MATERIAL_LOOKUP_LIST_ITEMS_COUNT = 4;
+const MATERIAL_LOOKUP_LIST_ITEMS_COUNT = 5;
 const MATERIAL_LOOKUP_LIST_PADDING = 8;
 
 
@@ -231,7 +235,7 @@ const Lookup = DropDownList.inherit({
             * @hidden
             */
 
-            itemCenteringEnabled: false,
+            dropDownCentered: false,
 
             _scrollToSelectedItemEnabled: false,
             useHiddenSubmitElement: true
@@ -302,15 +306,15 @@ const Lookup = DropDownList.inherit({
 
                     showCancelButton: false,
 
-                    itemCenteringEnabled: true,
+                    dropDownCentered: true,
 
                     _scrollToSelectedItemEnabled: true,
 
                     dropDownOptions: {
                         closeOnOutsideClick: true,
 
-                        width: (function() { return this._getPopupWidth(); }).bind(this),
-                        height: (function() { return this._getPopupHeight(MATERIAL_LOOKUP_LIST_ITEMS_COUNT); }).bind(this),
+                        width: () => getElementWidth(this.$element()),
+                        height: (function() { return this._getPopupHeight(); }).bind(this),
                         showTitle: false,
 
                         shading: false
@@ -323,15 +327,39 @@ const Lookup = DropDownList.inherit({
     _init: function() {
         this.callBase();
 
-        this._createScrollAction();
+        this._initActions();
     },
 
-    _createScrollAction: function() {
+    _initActions() {
+        this.callBase();
+
+        this._initScrollAction();
+        this._initPageLoadingAction();
+        this._initPullRefreshAction();
+    },
+
+    _initPageLoadingAction: function() {
+        this._pageLoadingAction = this._createActionByOption('onPageLoading');
+    },
+
+    _initPullRefreshAction: function() {
+        this._pullRefreshAction = this._createActionByOption('onPullRefresh');
+    },
+
+    _initScrollAction: function() {
         this._scrollAction = this._createActionByOption('onScroll');
     },
 
     _scrollHandler: function(e) {
         this._scrollAction(e);
+    },
+
+    _pullRefreshHandler: function(e) {
+        this._pullRefreshAction(e);
+    },
+
+    _pageLoadingHandler: function(e) {
+        this._pageLoadingAction(e);
     },
 
     _initTemplates: function() {
@@ -428,7 +456,8 @@ const Lookup = DropDownList.inherit({
             return;
         }
 
-        this._updateField(this.option('displayValue') || this.option('placeholder'));
+        const displayValue = this.option('displayValue');
+        this._updateField(isDefined(displayValue) && String(displayValue) || this.option('placeholder'));
         this.$element().toggleClass(LOOKUP_EMPTY_CLASS, !this.option('selectedItem'));
     },
 
@@ -489,56 +518,149 @@ const Lookup = DropDownList.inherit({
         }
     },
 
-    _setPopupPosition: function() {
-        if(!this.option('itemCenteringEnabled')) return;
+    _getDifferenceOffsets: function(selectedListItem) {
+        return selectedListItem.offset().top - $(this.element()).offset().top;
+    },
 
+    _isCenteringEnabled(index, count) {
+        return 1 < index && index < (count - 2);
+    },
 
-        const selectedIndex = this._list.option('selectedIndex');
-        const flipped = this._popup._$wrapper.hasClass(LOOKUP_POPOVER_FLIP_VERTICAL_CLASS);
-        if(selectedIndex === -1 || flipped) return;
+    _getPopupOffset: function() {
+        const listItemsCount = this._listItemElements().length;
+
+        if(listItemsCount === 0) return;
 
         const selectedListItem = $(this._list.element()).find('.' + LIST_ITEM_SELECTED_CLASS);
-
-        if(selectedListItem.offset().top < 0 || this._list.scrollTop() !== selectedListItem.position().top) {
-            this._scrollToSelectedItem();
-        }
-
+        const selectedIndex = this._listItemElements().index(selectedListItem);
         const differenceOfHeights = (selectedListItem.height() - $(this.element()).height()) / 2;
-        const popupContentParent = $(this._popup.content()).parent();
-        const differenceOfOffsets = selectedListItem.offset().top - popupContentParent.offset().top;
-        const lookupTop = $(this.element()).offset().top;
-        let popupOffsetY = differenceOfHeights;
+        const lookupOffset = $(this._list.element()).offset().top;
+        const dropDownHeightOption = this.option('dropDownOptions.height');
+        const popupHeight = (typeof dropDownHeightOption === 'function') ? dropDownHeightOption() : dropDownHeightOption;
+        const windowHeight = $(window).height();
 
-        if(lookupTop > differenceOfOffsets) {
-            popupOffsetY += differenceOfOffsets;
-        } else {
-            this._scrollToSelectedItem();
+        let offsetTop = 0;
+
+        if(selectedIndex !== -1) {
+            if(this._isCenteringEnabled(selectedIndex, listItemsCount)) {
+                this._scrollToSelectedItem();
+
+                const scrollOffsetTop = (popupHeight - selectedListItem.height()) / 2 - this._getDifferenceOffsets(selectedListItem);
+
+                this._list.scrollTo(this._list.scrollTop() + MATERIAL_LOOKUP_LIST_PADDING / 2 - scrollOffsetTop);
+
+                offsetTop = differenceOfHeights + this._getDifferenceOffsets(selectedListItem);
+
+                if(lookupOffset < offsetTop && selectedIndex !== (listItemsCount - 3)) {
+                    this._list.scrollTo(this._list.scrollTop() + this._getDifferenceOffsets(selectedListItem) / 2);
+
+                    offsetTop = differenceOfHeights + this._getDifferenceOffsets(selectedListItem);
+                }
+            } else if(selectedIndex <= 1) {
+                this._list.scrollTo(0);
+
+                offsetTop = differenceOfHeights + this._getDifferenceOffsets(selectedListItem);
+            } else if(selectedIndex >= (listItemsCount - 2)) {
+                this._scrollToSelectedItem();
+
+                offsetTop = differenceOfHeights + this._getDifferenceOffsets(selectedListItem);
+            }
+
+            if(lookupOffset < offsetTop) {
+                this._scrollToSelectedItem();
+                offsetTop = differenceOfHeights + MATERIAL_LOOKUP_LIST_PADDING;
+            }
         }
+
+        const offsetBottom = popupHeight - offsetTop - $(this.element()).height();
+
+        if(windowHeight - lookupOffset < offsetBottom) {
+            this._list.scrollTo(this._list.scrollTop() + differenceOfHeights - offsetBottom);
+            offsetTop = popupHeight - $(this.element()).height() - MATERIAL_LOOKUP_LIST_PADDING;
+        }
+
+        return offsetTop;
+    },
+
+    _setPopupPosition: function() {
+        if(!this.option('dropDownCentered')) return;
+
+        const flipped = this._popup._$wrapper.hasClass(LOOKUP_POPOVER_FLIP_VERTICAL_CLASS);
+        if(flipped) return;
+
+        const popupContentParent = $(this._popup.content()).parent();
+        const popupOffset = this._getPopupOffset();
 
         const position = translator.locate(popupContentParent);
 
         translator.move(popupContentParent, {
-            top: position.top - popupOffsetY
+            top: position.top - popupOffset
         });
     },
 
-    _getPopupHeight: function(listItemsCount) {
-        return (this._list && this._list.itemElements() && this.option('itemCenteringEnabled')) ?
-            (this._list.itemElements().height() * listItemsCount) +
-            MATERIAL_LOOKUP_LIST_PADDING * 2 +
-            (this._$searchWrapper ? this._$searchWrapper.outerHeight() : 0) +
-            (this._popup._$bottom ? this._popup._$bottom.outerHeight() : 0) +
-            (this._popup._$title ? this._popup._$title.outerHeight() : 0) :
-            'auto';
+
+    _listItemGroupedElements: function() {
+        const groups = this._list._itemContainer().children();
+        const items = [];
+
+        groups.each((_, group) => {
+            items.push($(group).find('.' + GROUP_LIST_HEADER_CLASS)[0]);
+
+            const groupedItems = $(group).find('.' + LIST_ITEM_CLASS);
+            groupedItems.each((_, item) => {
+                items.push(item);
+            });
+        });
+
+        return $(items);
     },
 
-    _getPopupWidth: function() {
-        return this.option('itemCenteringEnabled') ? $(this.element()).outerWidth() : $(window).width() * 0.8;
+    _calculateListHeight: function(grouped) {
+        const listItems = grouped ? this._listItemGroupedElements() : this._listItemElements();
+        const selectedListItem = $('.' + LIST_ITEM_SELECTED_CLASS);
+        const selectedIndex = listItems.index(selectedListItem);
+        let listHeight = 0;
+        let requireListItems = [];
+
+        if(listItems.length === 0) {
+            listHeight += MATERIAL_LOOKUP_LIST_PADDING;
+        } else if(listItems.length < MATERIAL_LOOKUP_LIST_ITEMS_COUNT) {
+            listItems.each((_, item) => {
+                listHeight += $(item).outerHeight();
+            });
+        } else {
+            if(selectedIndex <= 1) {
+                requireListItems = listItems.slice(0, MATERIAL_LOOKUP_LIST_ITEMS_COUNT);
+            } else if(this._isCenteringEnabled(selectedIndex, listItems.length)) {
+                requireListItems = listItems.slice(selectedIndex - 2, selectedIndex + 3);
+            } else {
+                requireListItems = listItems.slice(listItems.length - MATERIAL_LOOKUP_LIST_ITEMS_COUNT, listItems.length);
+            }
+
+            requireListItems.each((_, item) => {
+                listHeight += $(item).outerHeight();
+            });
+        }
+
+        return listHeight + (grouped ? MATERIAL_LOOKUP_LIST_PADDING : MATERIAL_LOOKUP_LIST_PADDING * 2);
+    },
+
+    _getPopupHeight: function() {
+        if(this._list && this._list.itemElements()) {
+            return this._calculateListHeight(this.option('grouped')) +
+                (this._$searchWrapper ? this._$searchWrapper.outerHeight() : 0) +
+                (this._popup._$bottom ? this._popup._$bottom.outerHeight() : 0) +
+                (this._popup._$title ? this._popup._$title.outerHeight() : 0);
+        } else {
+            return 'auto';
+        }
     },
 
     _renderPopup: function() {
-        if(this.option('usePopover')) {
-            if(this.option('_scrollToSelectedItemEnabled') && !this.option('itemCenteringEnabled') || !this.option('dropDownOptions.fullScreen')) {
+        if(this.option('usePopover') && !this.option('dropDownOptions.fullScreen')) {
+            if(this.option('_scrollToSelectedItemEnabled')) {
+                this.callBase();
+            } else {
                 this._renderPopover();
             }
         } else {
@@ -550,17 +672,19 @@ const Lookup = DropDownList.inherit({
     },
 
     _renderPopover: function() {
-        this._popup = this._createComponent(this._$popup, Popover, extend(this._popupConfig(), {
-            showEvent: null,
-            hideEvent: null,
-            target: this.$element(),
-            fullScreen: false,
-            shading: false,
-            closeOnTargetScroll: true,
-            width: this._isInitialOptionValue('dropDownOptions.width')
-                ? (function() { return this.$element().outerWidth(); }).bind(this)
-                : this._popupConfig().width
-        }));
+        this._popup = this._createComponent(this._$popup, Popover, extend(this._popupConfig(),
+            this._options.cache('dropDownOptions'), {
+                showEvent: null,
+                hideEvent: null,
+                target: this.$element(),
+                _fixedPosition: false,
+                fullScreen: false,
+                shading: false,
+                closeOnTargetScroll: true,
+                width: this._isInitialOptionValue('dropDownOptions.width')
+                    ? (function() { return this.$element().outerWidth(); }).bind(this)
+                    : this._popupConfig().width
+            }));
 
         this._popup.on({
             'showing': this._popupShowingHandler.bind(this),
@@ -614,12 +738,18 @@ const Lookup = DropDownList.inherit({
         delete result.animation;
         delete result.position;
 
-        if(this.option('_scrollToSelectedItemEnabled') && this.option('itemCenteringEnabled')) {
-            result.position = {
+        if(this.option('_scrollToSelectedItemEnabled')) {
+            result.position = this.option('dropDownCentered') ? {
                 my: 'left top',
                 at: 'left top',
                 of: this.element()
+            } : {
+                my: 'left top',
+                at: 'left bottom',
+                of: this.element()
             };
+
+            result.closeOnTargetScroll = true;
         }
 
         each(['position', 'animation', 'width', 'height'], (function(_, optionName) {
@@ -683,7 +813,10 @@ const Lookup = DropDownList.inherit({
         } : null;
     },
 
-    _applyButtonHandler: function() {
+    _applyButtonHandler: function(args) {
+        if(args) {
+            this._saveValueChangeEvent(args.event);
+        }
         this.option('value', this._valueGetter(this._currentSelectedItem()));
         this.callBase();
     },
@@ -695,7 +828,7 @@ const Lookup = DropDownList.inherit({
 
     _refreshPopupVisibility: function() {
         if(this.option('opened')) {
-            this._updatePopupHeight();
+            this._updatePopupDimensions();
         }
     },
 
@@ -704,11 +837,7 @@ const Lookup = DropDownList.inherit({
             this.option('dropDownOptions.width', this.$element().width());
         }
 
-        this.callBase();
-    },
-
-    _updatePopupDimensions: function() {
-        this._updatePopupHeight();
+        this._popup && this._updatePopupDimensions();
     },
 
     _input: function() {
@@ -772,6 +901,8 @@ const Lookup = DropDownList.inherit({
         }
 
         e.preventDefault();
+        e.target = $itemElement.get(0);
+        this._saveValueChangeEvent(e);
         this._selectListItem(e.itemData, $itemElement);
     },
 
@@ -826,8 +957,8 @@ const Lookup = DropDownList.inherit({
             refreshingText: this.option('refreshingText'),
             pageLoadingText: this.option('pageLoadingText'),
             onScroll: this._scrollHandler.bind(this),
-            onPullRefresh: this.option('onPullRefresh'),
-            onPageLoading: this.option('onPageLoading'),
+            onPullRefresh: this._pullRefreshHandler.bind(this),
+            onPageLoading: this._pageLoadingHandler.bind(this),
             pageLoadMode: this.option('pageLoadMode'),
             nextButtonText: this.option('nextButtonText'),
             indicateLoading: this.option('searchEnabled'),
@@ -981,21 +1112,25 @@ const Lookup = DropDownList.inherit({
             case 'popupHeight':
                 this._setPopupOption('height', value === 'auto' ? this.initialOption('dropDownOptions').height : value);
                 break;
+            case 'onPageLoading':
+                this._initPageLoadingAction();
+                break;
+            case 'onPullRefresh':
+                this._initPullRefreshAction();
+                break;
             case 'pullRefreshEnabled':
             case 'useNativeScrolling':
             case 'pullingDownText':
             case 'pulledDownText':
             case 'refreshingText':
             case 'pageLoadingText':
-            case 'onPullRefresh':
-            case 'onPageLoading':
             case 'nextButtonText':
             case 'grouped':
             case 'groupTemplate':
                 this._setListOption(name);
                 break;
             case 'onScroll':
-                this._createScrollAction();
+                this._initScrollAction();
                 break;
             case 'pageLoadMode':
                 this._setListOption('pageLoadMode', this.option('pageLoadMode'));
@@ -1003,9 +1138,10 @@ const Lookup = DropDownList.inherit({
             case 'cleanSearchOnOpening':
             case '_scrollToSelectedItemEnabled':
                 break;
-            case 'itemCenteringEnabled':
-                if(this.option('_scrollToSelectedItemEnabled') && value) {
-                    this.option('usePopover', false);
+            case 'dropDownCentered':
+                if(this.option('_scrollToSelectedItemEnabled')) {
+                    this.option('dropDownOptions.position', undefined);
+                    this._renderPopup();
                 }
                 break;
             default:

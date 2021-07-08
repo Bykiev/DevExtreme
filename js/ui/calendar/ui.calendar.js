@@ -19,6 +19,7 @@ import fx from '../../animation/fx';
 import windowUtils from '../../core/utils/window';
 import messageLocalization from '../../localization/message';
 import { FunctionTemplate } from '../../core/templates/function_template';
+import { isCommandKeyPressed } from '../../events/utils/index';
 
 const CALENDAR_CLASS = 'dx-calendar';
 const CALENDAR_BODY_CLASS = 'dx-calendar-body';
@@ -50,6 +51,8 @@ const ZOOM_LEVEL = {
     DECADE: 'decade',
     CENTURY: 'century'
 };
+
+const isIE11 = browser.msie && parseInt(browser.version) <= 11;
 
 const Calendar = Editor.inherit({
     _activeStateUnit: '.' + CALENDAR_CELL_CLASS,
@@ -95,7 +98,9 @@ const Calendar = Editor.inherit({
             onContouredChanged: null,
             hasFocus: function(element) {
                 return element.hasClass(FOCUSED_STATE_CLASS);
-            }
+            },
+
+            _todayDate: () => new Date()
 
 
             /**
@@ -123,7 +128,7 @@ const Calendar = Editor.inherit({
         return extend(this.callBase(), {
             rightArrow: function(e) {
                 e.preventDefault();
-                if(e.ctrlKey) {
+                if(isCommandKeyPressed(e)) {
                     this._waitRenderView(1);
                 } else {
                     this._moveCurrentDateByOffset(1 * this._getRtlCorrection());
@@ -131,7 +136,7 @@ const Calendar = Editor.inherit({
             },
             leftArrow: function(e) {
                 e.preventDefault();
-                if(e.ctrlKey) {
+                if(isCommandKeyPressed(e)) {
                     this._waitRenderView(-1);
                 } else {
                     this._moveCurrentDateByOffset(-1 * this._getRtlCorrection());
@@ -139,7 +144,7 @@ const Calendar = Editor.inherit({
             },
             upArrow: function(e) {
                 e.preventDefault();
-                if(e.ctrlKey) {
+                if(isCommandKeyPressed(e)) {
                     this._navigateUp();
                 } else {
                     if(fx.isAnimating(this._view.$element())) {
@@ -150,7 +155,7 @@ const Calendar = Editor.inherit({
             },
             downArrow: function(e) {
                 e.preventDefault();
-                if(e.ctrlKey) {
+                if(isCommandKeyPressed(e)) {
                     this._navigateDown();
                 } else {
                     if(fx.isAnimating(this._view.$element())) {
@@ -235,8 +240,14 @@ const Calendar = Editor.inherit({
         return dateSerialization.deserializeDate(value);
     },
 
-    _dateValue: function(value, dxEvent) {
-        if(dxEvent) this._saveValueChangeEvent(dxEvent);
+    _dateValue: function(value, event) {
+        if(event) {
+            if(event.type === 'keydown') {
+                const cellElement = this._view._getContouredCell().get(0);
+                event.target = cellElement;
+            }
+            this._saveValueChangeEvent(event);
+        }
         this._dateOption('value', value);
     },
 
@@ -330,7 +341,7 @@ const Calendar = Editor.inherit({
     },
 
     _moveToClosestAvailableDate: function(baseDate = this.option('currentDate')) {
-        let currentDate = new Date(baseDate);
+        let currentDate = dateUtils.createDate(baseDate);
         const zoomLevel = this.option('zoomLevel');
 
         const isCurrentDateAvailable = !this._isDateNotAvailable(currentDate);
@@ -341,8 +352,8 @@ const Calendar = Editor.inherit({
         let isDateForwardInStartView;
         let isDateBackwardInStartView;
 
-        const dateForward = new Date(currentDate);
-        const dateBackward = new Date(currentDate);
+        const dateForward = dateUtils.createDate(currentDate);
+        const dateBackward = dateUtils.createDate(currentDate);
 
         do {
             if(isDateForwardAvailable) {
@@ -405,7 +416,7 @@ const Calendar = Editor.inherit({
 
     _getNormalizedDate: function(date) {
         date = dateUtils.normalizeDate(date, this._getMinDate(), this._getMaxDate());
-        return typeUtils.isDefined(date) ? new Date(date) : date;
+        return typeUtils.isDefined(date) ? this._getDate(date) : date;
     },
 
     _initActions: function() {
@@ -439,7 +450,7 @@ const Calendar = Editor.inherit({
         const normalizedDate = this._getNormalizedDate(date);
 
         if(date.getTime() !== normalizedDate.getTime()) {
-            this.option('currentDate', new Date(normalizedDate));
+            this.option('currentDate', dateUtils.createDate(normalizedDate));
             return;
         }
 
@@ -532,7 +543,7 @@ const Calendar = Editor.inherit({
     },
 
     _getDateByOffset: function(offset, date) {
-        date = new Date(date || this.option('currentDate'));
+        date = this._getDate(date ?? this.option('currentDate'));
 
         const currentDay = date.getDate();
         const difference = dateUtils.getDifferenceInMonth(this.option('zoomLevel')) * offset;
@@ -618,7 +629,7 @@ const Calendar = Editor.inherit({
         const $view = $('<div>').appendTo(this._$viewsWrapper);
         const config = this._viewConfig(date);
 
-        return new specificView($view, config);
+        return this._createComponent($view, specificView, config);
     },
 
     _viewConfig: function(date) {
@@ -631,15 +642,14 @@ const Calendar = Editor.inherit({
             max: this._getMaxDate(),
             firstDayOfWeek: this.option('firstDayOfWeek'),
             value: this._dateOption('value'),
-            rtlEnabled: this.option('rtlEnabled'),
-            disabled: this.option('disabled'),
             tabIndex: undefined,
             focusStateEnabled: this.option('focusStateEnabled'),
             hoverStateEnabled: this.option('hoverStateEnabled'),
             disabledDates: disabledDates,
             onCellClick: this._cellClickHandler.bind(this),
             cellTemplate: this._getTemplateByOption('cellTemplate'),
-            allowValueSelection: this._isMaxZoomLevel()
+            allowValueSelection: this._isMaxZoomLevel(),
+            _todayDate: this.option('_todayDate')
         };
     },
 
@@ -694,7 +704,7 @@ const Calendar = Editor.inherit({
     },
 
     _updateTimeComponent: function(date) {
-        const result = new Date(date);
+        const result = dateUtils.createDate(date);
         const currentValue = this._dateOption('value');
 
         if(currentValue) {
@@ -766,7 +776,6 @@ const Calendar = Editor.inherit({
         const currentDate = this._getDateByOffset(e.direction, this.option('currentDate'));
 
         this._moveToClosestAvailableDate(currentDate);
-        this._updateNavigatorCaption(-e.direction * this._getRtlCorrection());
     },
 
     _navigateUp: function() {
@@ -901,8 +910,8 @@ const Calendar = Editor.inherit({
                 Button, {
                     focusStateEnabled: false,
                     text: messageLocalization.format('dxCalendar-todayButtonText'),
-                    onClick: (function() {
-                        this._toTodayView();
+                    onClick: (function(args) {
+                        this._toTodayView(args);
                     }).bind(this),
                     integrationOptions: {}
                 }).$element()
@@ -994,7 +1003,17 @@ const Calendar = Editor.inherit({
         });
     },
 
-    _toTodayView: function() {
+    _getDate(value) {
+        const result = dateUtils.createDate(value);
+        if(isIE11 && typeUtils.isDate(value)) {
+            result.setMilliseconds(0);
+        }
+
+        return result;
+    },
+
+    _toTodayView: function(args) {
+        this._saveValueChangeEvent(args.event);
         const today = new Date();
 
         if(this._isMaxZoomLevel()) {
@@ -1122,7 +1141,7 @@ const Calendar = Editor.inherit({
     },
 
     _updateAriaSelected: function(value, previousValue) {
-        value = value || this._dateOption('value');
+        value = value ?? this._dateOption('value');
 
         const $prevSelectedCell = this._view._getCellByDate(previousValue);
         const $selectedCell = this._view._getCellByDate(value);
@@ -1136,7 +1155,7 @@ const Calendar = Editor.inherit({
     },
 
     _updateAriaId: function(value) {
-        value = value || this.option('currentDate');
+        value = value ?? this.option('currentDate');
 
         const ariaId = 'dx-' + new Guid();
         const $newCell = this._view._getCellByDate(value);
@@ -1194,13 +1213,9 @@ const Calendar = Editor.inherit({
                 value = this._convertToDate(value);
                 previousValue = this._convertToDate(previousValue);
                 this._updateAriaSelected(value, previousValue);
-                this.option('currentDate', typeUtils.isDefined(value) ? new Date(value) : new Date());
+                this.option('currentDate', typeUtils.isDefined(value) ? dateUtils.createDate(value) : new Date());
                 this._updateViewsValue(value);
                 this._setSubmitValue(value);
-                this.callBase(args);
-                break;
-            case 'disabled':
-                this._view.option('disabled', value);
                 this.callBase(args);
                 break;
             case 'onCellClick':
@@ -1216,6 +1231,9 @@ const Calendar = Editor.inherit({
                 this._invalidate();
                 break;
             case 'hasFocus':
+                break;
+            case '_todayDate':
+                this._refreshViews();
                 break;
             default:
                 this.callBase(args);

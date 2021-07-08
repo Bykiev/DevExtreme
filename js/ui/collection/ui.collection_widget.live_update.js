@@ -1,8 +1,8 @@
 import $ from '../../core/renderer';
 import CollectionWidget from './ui.collection_widget.edit';
 import { extend } from '../../core/utils/extend';
-import { isDefined } from '../../core/utils/type';
 import arrayUtils from '../../data/array_utils';
+import { each } from '../../core/utils/iterator';
 import { keysEqual } from '../../data/utils';
 import { when } from '../../core/utils/deferred';
 import { findChanges } from '../../core/utils/array_compare';
@@ -59,18 +59,47 @@ export default CollectionWidget.inherit({
     },
 
     _dataSourceChangedHandler: function(newItems, e) {
-        e && e.changes ? this._modifyByChanges(e.changes) : this.callBase(newItems, e);
+        if(e?.changes) {
+            this._modifyByChanges(e.changes);
+        } else {
+            this.callBase(newItems, e);
+            this._refreshItemsCache();
+        }
     },
 
     _isItemEquals: function(item1, item2) {
         if(item1 && item1[PRIVATE_KEY_FIELD]) {
             item1 = item1.data;
         }
+
         try {
             return JSON.stringify(item1) === JSON.stringify(item2);
         } catch(e) {
             return item1 === item2;
         }
+    },
+
+    _isItemStrictEquals: function(item1, item2) {
+        return this._isItemEquals(item1, item2);
+    },
+
+    _shouldAddNewGroup: function(changes, items) {
+        let result = false;
+        if(this.option('grouped')) {
+            each(changes, (i, change) => {
+                if(change.type === 'insert') {
+                    result = true;
+                    each(items, (_, item) => {
+                        if(change.data.key === item.key) {
+                            result = false;
+                            return false;
+                        }
+                    });
+                }
+            });
+        }
+
+        return result;
     },
 
     _partialRefresh: function() {
@@ -81,8 +110,8 @@ export default CollectionWidget.inherit({
                 }
                 return this.keyOf(data);
             };
-            const result = findChanges(this._itemsCache, this._editStrategy.itemsGetter(), keyOf, this._isItemEquals);
-            if(result && this._itemsCache.length) {
+            const result = findChanges(this._itemsCache, this._editStrategy.itemsGetter(), keyOf, this._isItemStrictEquals.bind(this));
+            if(result && this._itemsCache.length && !this._shouldAddNewGroup(result, this._itemsCache)) {
                 this._modifyByChanges(result, true);
                 this._renderEmptyMessage();
                 return true;
@@ -133,10 +162,18 @@ export default CollectionWidget.inherit({
     _insertByChange: function(keyInfo, items, change, isPartialRefresh) {
         when(isPartialRefresh || arrayUtils.insert(keyInfo, items, change.data, change.index)).done(() => {
             this._beforeItemElementInserted(change);
-            this._renderItem(isDefined(change.index) ? change.index : items.length, change.data);
+
+            const $itemContainer = this._getItemContainer(change.data);
+
+            this._renderItem(change.index ?? items.length, change.data, $itemContainer);
+
             this._afterItemElementInserted();
             this._correctionIndex++;
         });
+    },
+
+    _getItemContainer: function(changeData) {
+        return this._itemContainer();
     },
 
     _updateSelectionAfterRemoveByChange: function(removeIndex) {

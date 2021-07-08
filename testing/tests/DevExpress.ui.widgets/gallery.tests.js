@@ -1020,8 +1020,8 @@ QUnit.module('render', {
 
         $galleryItemImage
             .on('load', () => {
-                assert.equal($galleryItemImage.width(), imageWidth);
-                assert.equal($galleryItemImage.height(), imageHeight);
+                assert.roughEqual($galleryItemImage.width(), imageWidth, 0.1);
+                assert.roughEqual($galleryItemImage.height(), imageHeight, 0.1);
                 done();
             })
             .attr('src', '../../testing/content/LightBlueSky.jpg');
@@ -2466,6 +2466,31 @@ QUnit.module('gallery with paginated dataSource', {
         $nextNavButton.trigger('dxclick');
         $items = $gallery.find(`.${GALLERY_ITEM_CLASS}`);
         assert.equal($items.filter(':visible').length, 4, 'rendered items count is correct, there are items for showing next gallery page');
+    });
+
+    QUnit.test('duplicate items should be updated after new page load when "loop" option is enabled (T927179)', function(assert) {
+        const $gallery = $('#gallerySimple').dxGallery({
+            loop: true,
+            showNavButtons: true,
+            dataSource: {
+                store: [1, 2, 3, 4, 5],
+                pageSize: 1,
+                paginate: true
+            }
+        });
+
+        const getElementSrc = (element) => {
+            return $(element).find('img').attr('src');
+        };
+
+        let $loopItems = $gallery.find(`.${GALLERY_LOOP_ITEM_CLASS}`);
+        assert.strictEqual(getElementSrc($loopItems[0]), '1', 'first duplicate item is correct');
+        assert.strictEqual(getElementSrc($loopItems[1]), '2', 'second duplicate item is correct');
+
+        $gallery.find(`.${NAV_NEXT_BUTTON_CLASS}`).trigger('dxclick');
+        $loopItems = $gallery.find(`.${GALLERY_LOOP_ITEM_CLASS}`);
+        assert.strictEqual(getElementSrc($loopItems[0]), '1', 'first duplicate item is correct');
+        assert.strictEqual(getElementSrc($loopItems[1]), '3', 'second duplicate item was updated');
     });
 
     QUnit.test('next navButton is visible if dataSource has next page', function(assert) {

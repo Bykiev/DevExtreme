@@ -273,6 +273,7 @@
         "dxFileManager-errorMaxFileSizeExceeded": "TODO",
         "dxFileManager-errorInvalidSymbols": "TODO",
         "dxFileManager-errorDefault": "Error no especificado",
+        "dxFileManager-errorDirectoryOpenFailed": "TODO",
 
         "dxFileManager-commandCreate": "TODO",
         "dxFileManager-commandRename": "TODO",
@@ -285,6 +286,7 @@
         "dxFileManager-commandThumbnails": "TODO",
         "dxFileManager-commandDetails": "TODO",
         "dxFileManager-commandClearSelection": "TODO",
+        "dxFileManager-commandShowNavPane": "TODO",
 
         "dxFileManager-dialogDirectoryChooserTitle": "TODO",
         "dxFileManager-dialogDirectoryChooserButtonText": "TODO",

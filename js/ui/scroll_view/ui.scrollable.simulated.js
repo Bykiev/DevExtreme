@@ -6,11 +6,17 @@ import { extend } from '../../core/utils/extend';
 import { hasWindow, getWindow } from '../../core/utils/window';
 import { each, map } from '../../core/utils/iterator';
 import { isDefined } from '../../core/utils/type';
+import { getBoundingRect } from '../../core/utils/position';
 import translator from '../../animation/translator';
 import Class from '../../core/class';
 import Animator from './animator';
 import devices from '../../core/devices';
-import { isDxMouseWheelEvent, addNamespace as addEventNamespace, normalizeKeyName } from '../../events/utils';
+import {
+    isDxMouseWheelEvent,
+    addNamespace as addEventNamespace,
+    normalizeKeyName,
+    isCommandKeyPressed
+} from '../../events/utils';
 import { deferUpdate, deferUpdater, deferRender, deferRenderer, noop } from '../../core/utils/common';
 import Scrollbar from './ui.scrollbar';
 import { when, Deferred } from '../../core/utils/deferred';
@@ -198,7 +204,7 @@ const Scroller = Class.inherit({
     },
 
     _getRealDimension: function(element, dimension) {
-        return Math.round(element.getBoundingClientRect()[dimension]);
+        return Math.round(getBoundingRect(element)[dimension]);
     },
 
     _getBaseDimension: function(element, dimension) {
@@ -733,6 +739,7 @@ const SimulatedStrategy = Class.inherit({
     },
 
     handleScroll: function() {
+        this._component._updateRtlConfig();
         this._scrollAction();
     },
 
@@ -1015,6 +1022,10 @@ const SimulatedStrategy = Class.inherit({
     },
 
     validate: function(e) {
+        if(isDxMouseWheelEvent(e) && isCommandKeyPressed(e)) {
+            return false;
+        }
+
         if(this.option('disabled')) {
             return false;
         }

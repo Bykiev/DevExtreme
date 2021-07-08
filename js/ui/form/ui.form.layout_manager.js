@@ -21,7 +21,7 @@ import inflector from '../../core/utils/inflector';
 import Widget from '../widget/ui.widget';
 import Validator from '../validator';
 import ResponsiveBox from '../responsive_box';
-import themes from '../themes';
+import { isMaterial } from '../themes';
 
 import '../text_box';
 import '../number_box';
@@ -57,6 +57,7 @@ const LAYOUT_MANAGER_LAST_ROW_CLASS = 'dx-last-row';
 const LAYOUT_MANAGER_FIRST_COL_CLASS = 'dx-first-col';
 const LAYOUT_MANAGER_LAST_COL_CLASS = 'dx-last-col';
 const LAYOUT_MANAGER_ONE_COLUMN = 'dx-layout-manager-one-col';
+const ROOT_SIMPLE_ITEM_CLASS = 'dx-root-simple-item';
 
 const FLEX_LAYOUT_CLASS = 'dx-flex-layout';
 
@@ -148,6 +149,18 @@ const LayoutManager = Widget.inherit({
         return dataField ? this.option('layoutData.' + dataField) : null;
     },
 
+    _isCheckboxUndefinedStateEnabled: function(editorOption) {
+        if(editorOption.allowIndeterminateState === true && editorOption.editorType === 'dxCheckBox') {
+            const nameParts = ['layoutData', ...editorOption.dataField.split('.')];
+            const propertyName = nameParts.pop();
+            const layoutData = this.option(nameParts.join('.'));
+
+            return layoutData && (propertyName in layoutData);
+        }
+
+        return false;
+    },
+
     _updateFieldValue: function(dataField, value) {
         const layoutData = this.option('layoutData');
         let newValue = value;
@@ -193,8 +206,7 @@ const LayoutManager = Widget.inherit({
                 that._updateItemWatchers(items);
             }
 
-            this._items = processedItems;
-
+            this._setItems(processedItems);
             this._sortItems();
         }
     },
@@ -264,6 +276,10 @@ const LayoutManager = Widget.inherit({
             item.editorType = isDefined(value) ? this._getEditorTypeByDataType(type(value)) : FORM_EDITOR_BY_DEFAULT;
         }
 
+        if(item.editorType === 'dxCheckBox') {
+            item.allowIndeterminateState = item.allowIndeterminateState ?? true;
+        }
+
         return item;
     },
 
@@ -326,26 +342,11 @@ const LayoutManager = Widget.inherit({
             that._prepareItemsWithMerging(colCount);
 
             const layoutItems = that._generateLayoutItems();
-            that._extendItemsWithDefaultTemplateOptions(layoutItems, that._items);
-
             that._responsiveBox = that._createComponent($container, ResponsiveBox, that._getResponsiveBoxConfig(layoutItems, colCount, templatesInfo));
             if(!windowUtils.hasWindow()) {
                 that._renderTemplates(templatesInfo);
             }
         }
-    },
-
-    _extendItemsWithDefaultTemplateOptions: function(targetItems, sourceItems) {
-        sourceItems.forEach(function(item) {
-            if(!item.merged) {
-                if(isDefined(item.disabled)) {
-                    targetItems[item.visibleIndex].disabled = item.disabled;
-                }
-                if(isDefined(item.visible)) {
-                    targetItems[item.visibleIndex].visible = item.visible;
-                }
-            }
-        });
     },
 
     _itemStateChangedHandler: function(e) {
@@ -420,6 +421,10 @@ const LayoutManager = Widget.inherit({
                 }
                 if(e.location.col === 0) {
                     $fieldItem.addClass(LAYOUT_MANAGER_FIRST_COL_CLASS);
+                }
+
+                if(item.itemType === SIMPLE_ITEM_TYPE && that.option('isRoot')) {
+                    $itemElement.addClass(ROOT_SIMPLE_ITEM_CLASS);
                 }
                 const isLastColumn = (e.location.col === colCount - 1) || (e.location.col + e.location.colspan === colCount);
                 const rowsCount = that._getRowsCount();
@@ -504,11 +509,16 @@ const LayoutManager = Widget.inherit({
                 delete item.colSpan;
             }
         }
-        this._items = result;
+        this._setItems(result);
     },
 
     _getColByIndex: function(index, colCount) {
         return index % colCount;
+    },
+
+    _setItems: function(items) {
+        this._items = items;
+        this._cashedColCount = null; // T923489
     },
 
     _generateLayoutItems: function() {
@@ -528,6 +538,12 @@ const LayoutManager = Widget.inherit({
                         col: this._getColByIndex(i, colCount)
                     }
                 };
+                if(isDefined(item.disabled)) {
+                    generatedItem.disabled = item.disabled;
+                }
+                if(isDefined(item.visible)) {
+                    generatedItem.visible = item.visible;
+                }
                 if(isDefined(item.colSpan)) {
                     generatedItem.location.colspan = item.colSpan;
                 }
@@ -646,7 +662,8 @@ const LayoutManager = Widget.inherit({
             helpID: helpID,
             labelID: labelOptions.labelID,
             id: id,
-            validationBoundary: that.option('validationBoundary')
+            validationBoundary: that.option('validationBoundary'),
+            allowIndeterminateState: item.allowIndeterminateState
         });
 
         this._itemsRunTimeInfo.add({
@@ -658,9 +675,14 @@ const LayoutManager = Widget.inherit({
 
         const editorElem = $editor.children().first();
         const $validationTarget = editorElem.hasClass(TEMPLATE_WRAPPER_CLASS) ? editorElem.children().first() : editorElem;
+        const validationTargetInstance = $validationTarget && $validationTarget.data('dx-validation-target');
 
-        if($validationTarget && $validationTarget.data('dx-validation-target')) {
+        if(validationTargetInstance) {
             that._renderValidator($validationTarget, item);
+
+            if(isMaterial()) {
+                that._addWrapperInvalidClass(validationTargetInstance);
+            }
         }
 
         that._renderHelpText(item, $editor, helpID);
@@ -786,7 +808,9 @@ const LayoutManager = Widget.inherit({
 
     _renderEditor: function(options) {
         const dataValue = this._getDataByField(options.dataField);
-        const defaultEditorOptions = dataValue !== undefined ? { value: dataValue } : {};
+        const defaultEditorOptions = dataValue !== undefined || this._isCheckboxUndefinedStateEnabled(options)
+            ? { value: dataValue }
+            : {};
         const isDeepExtend = true;
 
         if(EDITORS_WITH_ARRAY_VALUE.indexOf(options.editorType) !== -1) {
@@ -914,10 +938,6 @@ const LayoutManager = Widget.inherit({
                 editorInstance.setAria('describedby', renderOptions.helpID);
                 editorInstance.setAria('labelledby', renderOptions.labelID);
                 editorInstance.setAria('required', renderOptions.isRequired);
-
-                if(themes.isMaterial()) {
-                    that._addWrapperInvalidClass(editorInstance);
-                }
 
                 if(renderOptions.dataField) {
                     that._bindDataField(editorInstance, renderOptions, $container);
@@ -1135,11 +1155,12 @@ const LayoutManager = Widget.inherit({
                                     const valueGetter = dataUtils.compileGetter(dataField);
                                     const dataValue = valueGetter(args.value);
 
-                                    if(dataValue === undefined) {
-                                        this._resetWidget(itemRunTimeInfo.widgetInstance);
-                                    } else {
+                                    if(dataValue !== undefined || this._isCheckboxUndefinedStateEnabled(itemRunTimeInfo.item)) {
                                         itemRunTimeInfo.widgetInstance.option('value', dataValue);
+                                    } else {
+                                        this._resetWidget(itemRunTimeInfo.widgetInstance);
                                     }
+
                                 }
                             }
                         });

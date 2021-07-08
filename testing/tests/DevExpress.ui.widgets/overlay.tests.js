@@ -3,6 +3,7 @@ import fx from 'animation/fx';
 import { locate } from 'animation/translator';
 import { value as viewPort } from 'core/utils/view_port';
 import config from 'core/config';
+import browser from 'core/utils/browser';
 import { isRenderer } from 'core/utils/type';
 import { hideCallback as hideTopOverlayCallback } from 'mobile/hide_top_overlay';
 import positionUtils from 'animation/position';
@@ -17,6 +18,7 @@ import keyboardMock from '../../helpers/keyboardMock.js';
 import * as zIndex from 'ui/overlay/z_index';
 import selectors from 'ui/widget/selectors';
 import swatch from 'ui/widget/swatch_container';
+import nativePointerMock from '../../helpers/nativePointerMock.js';
 
 import 'common.css!';
 import 'ui/scroll_view/ui.scrollable';
@@ -373,6 +375,25 @@ testModule('option', moduleConfig, () => {
 
         overlay.option('disabled', undefined);
         assert.ok(!$content.hasClass(DISABLED_STATE_CLASS), 'disabled state not present in content element');
+    });
+
+    test('there is no errors when overlay has a subscription on \'onHiding\' event where the widget is desposed', function(assert) {
+        const instance = $('#overlay').dxOverlay({
+            visible: true,
+            onHiding: function(e) {
+                e.component.dispose();
+            }
+        }).dxOverlay('instance');
+
+        let errorOccurred = false;
+
+        try {
+            instance.hide();
+        } catch(e) {
+            errorOccurred = true;
+        }
+
+        QUnit.assert.strictEqual(errorOccurred, false, 'error must not be occurred');
     });
 
     test('visibility callbacks', function(assert) {
@@ -920,6 +941,22 @@ testModule('position', moduleConfig, () => {
 
         assert.strictEqual(instance._position.of, 'body');
     });
+
+    test('overlay wrapper should have correct dimensions even when there is "target" property in window', function(assert) {
+        $('<div>')
+            .css({ width: 100, height: 100 })
+            .attr('id', 'target')
+            .appendTo('#qunit-fixture');
+
+        $('#overlay').dxOverlay({
+            visible: true
+        });
+
+        const $overlayWrapper = $(`.${OVERLAY_WRAPPER_CLASS}`);
+
+        assert.roughEqual($overlayWrapper.width(), $(window).width(), 1.01, 'overlay wrapper width is correct');
+        assert.roughEqual($overlayWrapper.height(), $(window).height(), 1.01, 'overlay wrapper height is correct');
+    });
 });
 
 
@@ -1445,6 +1482,20 @@ testModule('content', moduleConfig, () => {
             onContentReady: contentReadyStub
         }).dxOverlay('instance');
 
+        instance.repaint();
+        assert.ok(contentReadyStub.calledOnce);
+    });
+
+    test('"repaint" should trigger content rendering in case it was not created', function(assert) {
+        const contentReadyStub = sinon.stub();
+        const $container = $('<div>').appendTo('#qunit-fixture').hide();
+        const $widget = $('<div>').appendTo($container);
+        const instance = $widget.dxOverlay({
+            visible: true,
+            onContentReady: contentReadyStub
+        }).dxOverlay('instance');
+
+        $container.show();
         instance.repaint();
         assert.ok(contentReadyStub.calledOnce);
     });
@@ -2128,6 +2179,42 @@ testModule('close on target scroll', moduleConfig, () => {
 
 
 testModule('container', moduleConfig, () => {
+    test('wrapper should have width and height css attributes equal to container width and height', function(assert) {
+        const $container = $('#customTargetContainer');
+        $container.css({
+            width: 100,
+            height: 100
+        });
+
+        const overlay = $('#overlay').dxOverlay({
+            container: $container,
+            visible: true
+        }).dxOverlay('instance');
+
+        const wrapperElement = overlay.$content().parent().get(0);
+
+        assert.strictEqual(wrapperElement.style.width, '100px', 'width is correct');
+        assert.strictEqual(wrapperElement.style.height, '100px', 'height is correct');
+    });
+
+    test('wrapper width and height should be restored after container option value changed to window (T937118)', function(assert) {
+        const $container = $('#customTargetContainer');
+        $container.css({
+            width: 100,
+            height: 100
+        });
+
+        const overlay = $('#overlay').dxOverlay({
+            container: $container,
+            visible: true
+        }).dxOverlay('instance');
+
+        const wrapperElement = overlay.$content().parent().get(0);
+        overlay.option('container', null);
+        assert.strictEqual(wrapperElement.style.width, '', 'width is restored after container option value changed to window');
+        assert.strictEqual(wrapperElement.style.height, '', 'height is restored after container option value changed to window');
+    });
+
     test('content should not be moved to container', function(assert) {
         const overlay = $('#overlay').dxOverlay({
             container: '#customTargetContainer'
@@ -3209,6 +3296,11 @@ testModule('keyboard navigation', {
     });
 
     test('overlay have focus on show click', function(assert) {
+        if(browser.msie && parseInt(browser.version) <= 11) {
+            assert.ok(true, 'test is ignored in IE11 because it failes on farm');
+            return;
+        }
+
         const $overlayContent = this.$overlayContent;
 
         this.overlay.option('animation', {
@@ -3253,6 +3345,11 @@ testModule('focus policy', {
     }
 }, () => {
     test('elements under overlay with shader have not to get focus by tab', function(assert) {
+        if(browser.msie && parseInt(browser.version) <= 11) {
+            assert.ok(true, 'test is ignored in IE11 because it failes on farm');
+            return;
+        }
+
         const overlay = new Overlay($('<div>').appendTo('#qunit-fixture'), {
             visible: true,
             shading: true,
@@ -3641,6 +3738,31 @@ testModule('scrollable interaction', {
             .lastEvent();
 
         assert.ok(e._cancelPreventDefault, 'overlay should set special flag for prevent default cancelling');
+    });
+
+    ['ctrlKey', 'metaKey'].forEach((commandKey) => {
+        test(`scroll event should not prevent zooming (${commandKey} pressed)`, function(assert) {
+            assert.expect(1);
+
+            const $overlay = $('#overlay').dxOverlay({
+                shading: true,
+                visible: true
+            });
+            const handler = () => {
+                assert.ok(true, 'event popped up');
+            };
+
+            $('#qunit-fixture').on('wheel', handler);
+
+            const $content = $overlay.dxOverlay('$content');
+            const $shader = $content.closest(toSelector(OVERLAY_SHADER_CLASS));
+
+            nativePointerMock($shader)
+                .start()
+                .wheel(10, { [commandKey]: true });
+
+            $('#qunit-fixture').off('wheel', handler);
+        });
     });
 });
 

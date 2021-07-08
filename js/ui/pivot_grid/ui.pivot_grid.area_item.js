@@ -2,6 +2,7 @@ import $ from '../../core/renderer';
 import Class from '../../core/class';
 import { getPublicElement } from '../../core/utils/dom';
 import { extend } from '../../core/utils/extend';
+import { getBoundingRect } from '../../core/utils/position';
 import { isDefined } from '../../core/utils/type';
 
 const PIVOTGRID_EXPAND_CLASS = 'dx-expand';
@@ -12,7 +13,7 @@ const getRealElementWidth = function(element) {
     const offsetWidth = element.offsetWidth;
 
     if(element.getBoundingClientRect) {
-        const clientRect = element.getBoundingClientRect();
+        const clientRect = getBoundingRect(element);
         width = clientRect.width;
 
         if(!width) {
@@ -267,7 +268,7 @@ exports.AreaItem = Class.inherit({
 
         if(row && row.lastChild) {
             if(row.getBoundingClientRect) {
-                const clientRect = row.getBoundingClientRect();
+                const clientRect = getBoundingRect(row);
                 height = clientRect.height;
 
                 if(height <= offsetHeight - 1) {
@@ -367,7 +368,6 @@ exports.AreaItem = Class.inherit({
 
     setColumnsWidth: function(values) {
         let i;
-        let totalWidth = 0;
         const tableElement = this._tableElement[0];
         let colgroupElementHTML = '';
         const columnsCount = this.getColumnsCount();
@@ -382,11 +382,11 @@ exports.AreaItem = Class.inherit({
         }
 
         for(i = 0; i < columnsCount; i++) {
-            totalWidth += columnWidth[i];
             colgroupElementHTML += '<col style="width: ' + columnWidth[i] + 'px">';
         }
         this._colgroupElement.html(colgroupElementHTML);
-        this._tableWidth = totalWidth - this._groupWidth > 0.01 ? Math.ceil(totalWidth) : totalWidth;
+        this._tableWidth = columnWidth.reduce((sum, width) => sum + width, 0);
+
         tableElement.style.width = this._tableWidth + 'px';
         tableElement.style.tableLayout = 'fixed';
     },

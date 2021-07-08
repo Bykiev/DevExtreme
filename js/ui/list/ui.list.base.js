@@ -191,6 +191,9 @@ const ListBase = CollectionWidget.inherit({
 
             wrapItemText: false,
 
+            _swipeEnabled: true,
+
+            _revertPageOnEmptyLoad: false,
 
             showChevronExpr: function(data) { return data ? data.showChevron : undefined; },
             badgeExpr: function(data) { return data ? data.badge : undefined; }
@@ -268,6 +271,14 @@ const ListBase = CollectionWidget.inherit({
         return this._$container;
     },
 
+    _saveSelectionChangeEvent: function(e) {
+        this._selectionChangeEventInstance = e;
+    },
+
+    _getSelectionChangeEvent: function() {
+        return this._selectionChangeEventInstance;
+    },
+
     _refreshItemElements: function() {
         if(!this.option('grouped')) {
             this._itemElementsCache = this._itemContainer().children(this._itemSelector());
@@ -283,7 +294,7 @@ const ListBase = CollectionWidget.inherit({
         this.callBase.apply(this, arguments);
 
         this._refreshItemElements();
-        this._updateLoadingState();
+        this._updateLoadingState(true);
     },
 
     reorderItem: function(itemElement, toItemElement) {
@@ -318,8 +329,18 @@ const ListBase = CollectionWidget.inherit({
         return true;
     },
 
+    _resetDataSourcePageIndex: function() {
+        const currentDataSource = this.getDataSource();
+
+        if(currentDataSource && currentDataSource.pageIndex() !== 0) {
+            currentDataSource.pageIndex(0);
+            currentDataSource.load();
+        }
+    },
+
     _init: function() {
         this.callBase();
+        this._resetDataSourcePageIndex();
         this._$container = this.$element();
 
         this._initScrollView();
@@ -347,6 +368,10 @@ const ListBase = CollectionWidget.inherit({
 
     _getGroupedOption: function() {
         return this.option('grouped');
+    },
+
+    _getGroupContainerByIndex: function(groupIndex) {
+        return this._itemContainer().find(`.${LIST_GROUP_CLASS}`).eq(groupIndex).find(`.${LIST_GROUP_BODY_CLASS}`);
     },
 
     _dataSourceFromUrlLoadMode: function() {
@@ -445,6 +470,14 @@ const ListBase = CollectionWidget.inherit({
         return this._nextButtonMode() && this._dataSource && this._dataSource.isLoaded();
     },
 
+    _isDataSourceFirstLoadCompleted: function(newValue) {
+        if(typeUtils.isDefined(newValue)) {
+            this._isFirstLoadCompleted = newValue;
+        }
+
+        return this._isFirstLoadCompleted;
+    },
+
     _dataSourceLoadingChangedHandler: function(isLoading) {
         if(this._loadIndicationSuppressed()) {
             return;
@@ -453,22 +486,28 @@ const ListBase = CollectionWidget.inherit({
         if(isLoading && this.option('indicateLoading')) {
             this._showLoadingIndicatorTimer = setTimeout((function() {
                 const isEmpty = !this._itemElements().length;
-                if(this._scrollView && !isEmpty) {
-                    this._scrollView.startLoading();
+                const shouldIndicateLoading = !isEmpty || this._isDataSourceFirstLoadCompleted();
+                if(shouldIndicateLoading) {
+                    this._scrollView?.startLoading();
                 }
             }).bind(this));
         } else {
             clearTimeout(this._showLoadingIndicatorTimer);
             this._scrollView && this._scrollView.finishLoading();
         }
+        if(!isLoading) {
+            this._isDataSourceFirstLoadCompleted(false);
+        }
     },
 
-    _dataSourceChangedHandler: function(newItems) {
+    _dataSourceChangedHandler: function() {
         if(!this._shouldAppendItems() && windowUtils.hasWindow()) {
             this._scrollView && this._scrollView.scrollTo(0);
         }
 
         this.callBase.apply(this, arguments);
+
+        this._isDataSourceFirstLoadCompleted(true);
     },
 
     _refreshContent: function() {
@@ -510,7 +549,21 @@ const ListBase = CollectionWidget.inherit({
 
         if(isElementVisible && !this._scrollViewIsFull() && !this._isDataSourceLoading() && !this._isLastPage()) {
             clearTimeout(this._loadNextPageTimer);
-            this._loadNextPageTimer = setTimeout(this._loadNextPage.bind(this));
+            this._loadNextPageTimer = setTimeout(() => {
+                this._loadNextPage().done(this._setPreviousPageIfNewIsEmpty.bind(this));
+            });
+        }
+    },
+
+    _setPreviousPageIfNewIsEmpty: function(result) {
+        if(this.option('_revertPageOnEmptyLoad')) {
+            const dataSource = this.getDataSource();
+            const pageIndex = dataSource?.pageIndex();
+
+            if(result?.length === 0 && pageIndex > 0) {
+                this._fireContentReadyAction();
+                dataSource.pageIndex(pageIndex - 1);
+            }
         }
     },
 
@@ -650,14 +703,13 @@ const ListBase = CollectionWidget.inherit({
         this._refreshItemElements();
         this.callBase.apply(this, arguments);
 
-        if(this.option('onItemSwipe')) {
+        if(this.option('_swipeEnabled')) {
             this._attachSwipeEvent($(args.itemElement));
         }
     },
 
     _attachSwipeEvent: function($itemElement) {
         const endEventName = eventUtils.addNamespace(swipeEvents.end, this.NAME);
-
         eventsEngine.on($itemElement, endEventName, this._itemSwipeEndHandler.bind(this));
     },
 
@@ -667,9 +719,10 @@ const ListBase = CollectionWidget.inherit({
         });
     },
 
-    _nextButtonHandler: function() {
-        const source = this._dataSource;
+    _nextButtonHandler: function(e) {
+        this._pageLoadingAction(e);
 
+        const source = this._dataSource;
         if(source && !source.isLoading()) {
             this._scrollView.toggleLoading(true);
             this._$nextButton.detach();
@@ -755,10 +808,12 @@ const ListBase = CollectionWidget.inherit({
             this._$nextButton.remove();
             this._$nextButton = null;
         }
+        delete this._inkRipple;
         this.callBase.apply(this, arguments);
     },
 
     _dispose: function() {
+        this._isDataSourceFirstLoadCompleted(false);
         clearTimeout(this._holdTimer);
         clearTimeout(this._loadNextPageTimer);
         clearTimeout(this._showLoadingIndicatorTimer);
@@ -832,6 +887,11 @@ const ListBase = CollectionWidget.inherit({
             case 'dataSource':
                 this.callBase(args);
                 this._initScrollView();
+                this._isDataSourceFirstLoadCompleted(false);
+                break;
+            case 'items':
+                this.callBase(args);
+                this._isDataSourceFirstLoadCompleted(false);
                 break;
             case 'pullingDownText':
             case 'pulledDownText':
@@ -842,6 +902,7 @@ const ListBase = CollectionWidget.inherit({
             case 'bounceEnabled':
             case 'scrollByContent':
             case 'scrollByThumb':
+            case 'useNativeScrolling':
             case 'scrollingEnabled':
             case 'pullRefreshEnabled':
                 this._initScrollView();
@@ -856,7 +917,6 @@ const ListBase = CollectionWidget.inherit({
             case 'onPullRefresh':
             case 'onPageLoading':
                 this._createScrollViewActions();
-                this._invalidate();
                 break;
             case 'grouped':
             case 'collapsibleGroups':
@@ -888,6 +948,9 @@ const ListBase = CollectionWidget.inherit({
             case 'showChevronExpr':
             case 'badgeExpr':
                 this._invalidate();
+                break;
+            case '_swipeEnabled':
+            case '_revertPageOnEmptyLoad':
                 break;
             case '_listAttributes':
                 break;

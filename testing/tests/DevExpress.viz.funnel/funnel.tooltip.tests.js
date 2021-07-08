@@ -64,6 +64,38 @@ QUnit.test('Show tooltip', function(assert) {
     assert.equal(this.tooltip.formatValue.args[0][0], 1);
 });
 
+QUnit.test('Show tooltip, async render', function(assert) {
+    this.tooltip.stub('show').returns(undefined);
+    const widget = createFunnel({
+        algorithm: 'stub',
+        dataSource: [{ value: 1 }]
+    });
+    const testItem = widget.getAllItems()[0];
+
+    testItem.showTooltip();
+
+    assert.ok(!this.tooltip.hide.called);
+
+    this.tooltip.show.lastCall.args[4](true);
+    assert.equal(this.tooltip.move.callCount, 1);
+});
+
+QUnit.test('Hide tooltip if it does not render, async render', function(assert) {
+    this.tooltip.stub('show').returns(undefined);
+    const widget = createFunnel({
+        algorithm: 'stub',
+        dataSource: [{ value: 1 }]
+    });
+    const testItem = widget.getAllItems()[0];
+
+    testItem.showTooltip();
+
+    assert.ok(!this.tooltip.hide.called);
+
+    this.tooltip.show.lastCall.args[4](false);
+    assert.ok(this.tooltip.hide.called);
+});
+
 QUnit.test('Show tooltip with passed coords', function(assert) {
     const widget = createFunnel({
         algorithm: 'stub',

@@ -1,7 +1,12 @@
 import $ from 'jquery';
 import { DataSource } from 'data/data_source/data_source';
+import ArrayStore from 'data/array_store';
+
 
 import 'ui/list';
+
+const LIST_ITEM_CLASS = 'dx-list-item';
+const LIST_GROUP_CLASS = 'dx-list-group';
 
 QUnit.module('live update', {
     beforeEach: function() {
@@ -20,6 +25,23 @@ QUnit.module('live update', {
                     e.component.option('onItemDeleted', this.itemDeletedSpy);
                 }
             }, options)).dxList('instance');
+        };
+
+        this.createGroupedList = () => {
+            return this.createList({
+                repaintChangesOnly: true,
+                grouped: true,
+                displayExpr: 'id',
+                keyExpr: 'id',
+                dataSource: new DataSource({
+                    paginate: false,
+                    pushAggregationTimeout: 0,
+                    store: new ArrayStore([{ key: 'Item 0', id: '0' }, { key: 'Item 1', id: '1' }]),
+                    key: 'id',
+                    group: 'key',
+                    reshapeOnPush: true
+                })
+            });
         };
     }
 }, function() {
@@ -61,6 +83,34 @@ QUnit.module('live update', {
         store.push(pushData);
 
         assert.equal(this.itemRenderedSpy.callCount, 0, 'item is inserted after push');
+    });
+
+
+    QUnit.test('insert item should work correct if grouping and repaintChangesOnly (T993317)', function(assert) {
+        const listInstance = this.createGroupedList();
+
+        const store = listInstance.getDataSource().store();
+        store.push([{ type: 'insert', data: { key: 'Item 1', id: '2' } }]);
+
+        const listItems = $(listInstance.element()).find(`.${LIST_ITEM_CLASS}`);
+
+        assert.strictEqual(this.itemRenderedSpy.callCount, 1, 'item is inserted after push');
+        assert.strictEqual(listItems.length, 3, 'new item is added');
+    });
+
+    QUnit.test('insert item should work correct if grouping and repaintChangesOnly (new group) (T993317)', function(assert) {
+        const listInstance = this.createGroupedList();
+
+        const store = listInstance.getDataSource().store();
+        store.push([{ type: 'insert', data: { key: 'Item New', id: '2' } }]);
+
+        const $list = $(listInstance.element());
+        const listGroups = $list.find(`.${LIST_GROUP_CLASS}`);
+        const listItems = $list.find(`.${LIST_ITEM_CLASS}`);
+
+        assert.strictEqual(this.itemRenderedSpy.callCount, 3, 'all items is rerendered');
+        assert.strictEqual(listItems.length, 3, 'new item is added');
+        assert.strictEqual(listGroups.length, 3, 'new group is added');
     });
 
     QUnit.test('insert item to specific position', function(assert) {
@@ -191,6 +241,40 @@ QUnit.module('live update', {
         assert.equal(list.itemElements().length, 4, 'check items elements count');
         assert.deepEqual(this.itemRenderedSpy.firstCall.args[0].itemData, pushData[0].data, 'check first updated item');
         assert.deepEqual(this.itemRenderedSpy.lastCall.args[0].itemData, pushData[1].data, 'check last updated item');
+    });
+
+    QUnit.test('load new page by scrolling after updating an item (T937825)', function(assert) {
+        const list = this.createList({
+            pageLoadMode: 'scrollBottom',
+            height: 40,
+            displayExpr: 'text',
+            useNativeScrolling: false,
+            dataSource: {
+                paginate: true,
+                pageSize: 2,
+                pushAggregationTimeout: 0,
+                key: 'id',
+                store: [
+                    { id: 1, text: 'item1' },
+                    { id: 2, text: 'item2' },
+                    { id: 3, text: 'item3' },
+                    { id: 4, text: 'item4' },
+                    { id: 5, text: 'item5' }
+                ]
+            }
+        });
+        const store = list.getDataSource().store();
+
+        store.push([
+            {
+                type: 'update',
+                data: { text: 'itemN' },
+                key: 1
+            }
+        ]);
+        list.scrollTo(100);
+
+        assert.strictEqual(list.itemElements().length, 4, '2nd page is loaded');
     });
 
     QUnit.test('push & repaintChangesOnly', function(assert) {
@@ -571,5 +655,30 @@ QUnit.module('live update', {
 
         $('.dx-list-item:eq(0)').trigger('dxclick');
         assert.deepEqual(list.option('selectedItemKeys'), [1]);
+    });
+
+    QUnit.test('repaintChangesOnly, clear item selection after reload if key is not defined (T944954)', function(assert) {
+        const selectedItemSelector = '.dx-list-item-selected';
+
+        const list = this.createList({
+            dataSource: {
+                load: () => ([{ id: 1 }, { id: 2 }]),
+                key: null
+            },
+            repaintChangesOnly: true,
+            selectionMode: 'single'
+        });
+
+        list.selectItem(1);
+
+        assert.strictEqual(list.itemElements().filter(selectedItemSelector).length, 1, 'one selected item');
+        const $itemElements = list.itemElements();
+
+        list.getDataSource().reload();
+
+        assert.equal(list.itemElements().length, 2, 'item element count');
+        assert.strictEqual(list.itemElements().filter(selectedItemSelector).length, 0, 'no selected items');
+        assert.equal(list.itemElements().get(0), $itemElements.get(0), 'item element 0 is not rerenderd');
+        assert.notEqual(list.itemElements().get(1), $itemElements.get(1), 'item element 1 is rerenderd');
     });
 });

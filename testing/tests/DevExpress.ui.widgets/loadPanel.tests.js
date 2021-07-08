@@ -43,20 +43,21 @@ QUnit.module('init', {
         assert.equal($content.find(MESSAGE_SELECTOR).text(), 'Test Loading Message');
     });
 
-    QUnit.test('load panel created with templatesRenderAsynchronously option should be shown without delay', function(assert) {
+    QUnit.test('load panel created with templatesRenderAsynchronously option should be shown with delay', function(assert) {
         const clock = sinon.useFakeTimers();
         try {
             const onShowingSpy = sinon.spy();
 
-            $('#loadPanel').dxLoadPanel({
+            const instance = $('#loadPanel').dxLoadPanel({
                 templatesRenderAsynchronously: true,
                 visible: true,
                 onShowing: onShowingSpy
-            });
+            }).dxLoadPanel('instance');
 
-            assert.equal(onShowingSpy.called, 1);
+            assert.strictEqual(instance.option('templatesRenderAsynchronously'), true, 'templatesRenderAsynchronously option can be reassigned (T896267)');
+            assert.strictEqual(onShowingSpy.called, false);
             clock.tick();
-            assert.equal(onShowingSpy.called, 1);
+            assert.strictEqual(onShowingSpy.called, true);
         } finally {
             clock.restore();
         }
@@ -167,6 +168,36 @@ QUnit.module('options changed callbacks', {
         assert.equal(indicator.length, 0, 'indicator is hidden');
     });
 
+    QUnit.test('showIndicator option change to true after change to false should render loadIndicator (T943765)', function(assert) {
+        const instance = this.element
+            .dxLoadPanel({
+                showIndicator: true,
+                visible: true
+            })
+            .dxLoadPanel('instance');
+
+
+        instance.option('showIndicator', false);
+        instance.option('showIndicator', true);
+
+        const indicator = instance.$content().find('.dx-loadindicator');
+        assert.equal(indicator.length, 1, 'indicator is shown');
+    });
+
+    QUnit.test('message option change should not hide loadIndicator (T943765)', function(assert) {
+        const instance = this.element
+            .dxLoadPanel({
+                showIndicator: true,
+                visible: true
+            })
+            .dxLoadPanel('instance');
+
+        instance.option('message', 'new message');
+
+        const indicator = instance.$content().find('.dx-loadindicator');
+        assert.equal(indicator.length, 1, 'indicator is shown');
+    });
+
     QUnit.test('showPane option', function(assert) {
         const instance = this.element
             .dxLoadPanel({ showPane: true })
@@ -198,6 +229,39 @@ QUnit.module('options changed callbacks', {
         assert.equal(loadIndicatorInstance.option('indicatorSrc'), url, 'custom indicator option installed successfully');
         instance.option('indicatorSrc', '');
         assert.equal(instance.option('indicatorSrc'), loadIndicatorInstance.option('indicatorSrc'), 'custom indicator option changed successfully');
+    });
+
+    QUnit.test('indicatorSrc option change', function(assert) {
+        const url = '../../testing/content/customLoadIndicator.png';
+        const instance = this.element
+            .dxLoadPanel({
+                showIndicator: true
+            })
+            .dxLoadPanel('instance');
+        instance.show();
+
+        instance.option('indicatorSrc', url);
+
+        const loadIndicatorInstance = this.instance.$content().find('.dx-loadindicator').dxLoadIndicator().dxLoadIndicator('instance');
+
+        assert.strictEqual(loadIndicatorInstance.option('indicatorSrc'), url, 'custom indicator option installed successfully');
+        instance.option('indicatorSrc', '');
+        assert.equal(instance.option('indicatorSrc'), loadIndicatorInstance.option('indicatorSrc'), 'custom indicator option changed successfully');
+    });
+
+    QUnit.test('indicatorSrc option change when showIndicator is false', function(assert) {
+        const url = '../../testing/content/customLoadIndicator.png';
+        const instance = this.element
+            .dxLoadPanel({})
+            .dxLoadPanel('instance');
+
+        instance.show();
+        instance.option('indicatorSrc', url);
+        instance.option('showIndicator', true);
+
+        const loadIndicatorInstance = this.instance.$content().find('.dx-loadindicator').dxLoadIndicator().dxLoadIndicator('instance');
+
+        assert.strictEqual(loadIndicatorInstance.option('indicatorSrc'), url, 'custom indicator option installed successfully');
     });
 
     QUnit.test('Load panel should not close on esc button when focusStateEnabled is true', function(assert) {

@@ -4,6 +4,7 @@ import fx from 'animation/fx';
 import errors from 'ui/widget/ui.errors';
 import translator from 'animation/translator';
 import holdEvent from 'events/hold';
+import { noop } from 'core/utils/common';
 import { isRenderer } from 'core/utils/type';
 import config from 'core/config';
 import pointerMock from '../../../helpers/pointerMock.js';
@@ -2206,18 +2207,57 @@ QUnit.test('selectAll selects all items', function(assert) {
 
 QUnit.test('selectAll triggers callback when selects all items', function(assert) {
     const items = [0, 1];
+    const selectAllSpy = sinon.spy();
 
     const $list = $('#list').dxList({
         items: items,
         showSelectionControls: true,
         selectionMode: 'all',
-        onSelectAllValueChanged: (args) => {
-            assert.strictEqual(args.value, true, 'all items selected');
-        }
+        onSelectAllValueChanged: selectAllSpy
     });
 
     const $checkbox = $list.find('.dx-list-select-all .dx-checkbox');
     $checkbox.trigger('dxclick');
+
+    assert.strictEqual(selectAllSpy.callCount, 1);
+    assert.strictEqual(selectAllSpy.firstCall.args[0].value, true, 'all items selected');
+});
+
+QUnit.test('selectAll triggers changed callback when selects all items', function(assert) {
+    const items = [0, 1];
+    const selectAllSpy = sinon.spy();
+
+    const $list = $('#list').dxList({
+        items: items,
+        showSelectionControls: true,
+        selectionMode: 'all',
+        onSelectAllValueChanged: noop
+    });
+    const list = $list.dxList('instance');
+
+    list.option('onSelectAllValueChanged', selectAllSpy);
+    const $checkbox = $list.find('.dx-list-select-all .dx-checkbox');
+    $checkbox.trigger('dxclick');
+
+    assert.strictEqual(selectAllSpy.callCount, 1);
+});
+
+QUnit.test('selectAll triggers selectAllValueChanged event when selects all items', function(assert) {
+    const items = [0, 1];
+    const selectAllSpy = sinon.spy();
+
+    const $list = $('#list').dxList({
+        items: items,
+        showSelectionControls: true,
+        selectionMode: 'all'
+    });
+    const list = $list.dxList('instance');
+
+    list.on('selectAllValueChanged', selectAllSpy);
+    const $checkbox = $list.find('.dx-list-select-all .dx-checkbox');
+    $checkbox.trigger('dxclick');
+
+    assert.strictEqual(selectAllSpy.callCount, 1);
 });
 
 QUnit.test('selectAll unselect all items when all items selected', function(assert) {
@@ -2860,27 +2900,18 @@ QUnit.test('prev item should be moved back if item moved to start position', fun
 });
 
 QUnit.test('item should be moved with animation', function(assert) {
-    const origFX = fx.animate;
-    let animated = false;
-    fx.animate = () => {
-        animated = true;
-        return $.Deferred().resolve().promise();
-    };
+    fx.off = false;
 
-    try {
-        const $list = $('#templated-list').dxList({
-            items: ['0', '1', '2'],
-            itemDragging: { allowReordering: true }
-        });
-        const $items = $list.find(toSelector(LIST_ITEM_CLASS));
-        const $item1 = $items.eq(1);
-        const pointer = reorderingPointerMock($item1, this.clock);
+    const $list = $('#templated-list').dxList({
+        items: ['0', '1', '2'],
+        itemDragging: { allowReordering: true }
+    });
+    const $items = $list.find(toSelector(LIST_ITEM_CLASS));
+    const $item1 = $items.eq(1);
+    const pointer = reorderingPointerMock($item1, this.clock);
 
-        pointer.dragStart(0.5).drag(1);
-        assert.strictEqual(animated, true, 'animation present');
-    } finally {
-        fx.animate = origFX;
-    }
+    pointer.dragStart(0.5).drag(1);
+    assert.strictEqual($items.get(2).style.transitionDuration, '300ms', 'animation present');
 });
 
 QUnit.test('drop item should reorder list items with correct indexes', function(assert) {

@@ -2,7 +2,7 @@ const Calendar = require('../calendar');
 const DateBoxStrategy = require('./ui.date_box.strategy');
 const dateUtils = require('../../core/utils/date');
 const commonUtils = require('../../core/utils/common');
-const isFunction = require('../../core/utils/type').isFunction;
+const typeUtils = require('../../core/utils/type');
 const extend = require('../../core/utils/extend').extend;
 const messageLocalization = require('../../localization/message');
 
@@ -35,14 +35,18 @@ const CalendarStrategy = DateBoxStrategy.inherit({
                     e.preventDefault();
 
                     if(this._widget.option('zoomLevel') === this._widget.option('maxZoomLevel')) {
-                        const contouredDate = this._widget._view.option('contouredDate');
+                        const viewValue = this._getContouredValue();
                         const lastActionElement = this._lastActionElement;
-                        if(contouredDate && lastActionElement === 'calendar') {
-                            this.dateBoxValue(contouredDate, e);
+                        const shouldCloseDropDown = this._closeDropDownByEnter();
+
+                        if(shouldCloseDropDown && viewValue && lastActionElement === 'calendar') {
+                            this.dateBoxValue(viewValue, e);
                         }
 
-                        this.dateBox.close();
+                        shouldCloseDropDown && this.dateBox.close();
                         this.dateBox._valueChangeEventHandler(e);
+
+                        return !shouldCloseDropDown;
                     } else {
                         return true;
                     }
@@ -59,8 +63,14 @@ const CalendarStrategy = DateBoxStrategy.inherit({
         return displayFormat || 'shortdate';
     },
 
+    _closeDropDownByEnter: () => true,
+
     _getWidgetName: function() {
         return Calendar;
+    },
+
+    _getContouredValue: function() {
+        return this._widget._view.option('contouredDate');
     },
 
     getKeyboardListener() {
@@ -78,7 +88,7 @@ const CalendarStrategy = DateBoxStrategy.inherit({
             onValueChanged: this._valueChangedHandler.bind(this),
             onCellClick: this._cellClickHandler.bind(this),
             tabIndex: null,
-            disabledDates: isFunction(disabledDates) ? this._injectComponent(disabledDates.bind(this.dateBox)) : disabledDates,
+            disabledDates: typeUtils.isFunction(disabledDates) ? this._injectComponent(disabledDates.bind(this.dateBox)) : disabledDates,
             onContouredChanged: this._refreshActiveDescendant.bind(this),
             hasFocus: function() { return true; }
         });
@@ -109,7 +119,7 @@ const CalendarStrategy = DateBoxStrategy.inherit({
             position = ['bottom', 'center'];
         }
 
-        if(this.dateBox.option('applyValueMode') === 'useButtons') {
+        if(this.dateBox.option('applyValueMode') === 'useButtons' && this._isCalendarVisible()) {
             toolbarItems.unshift({
                 widget: 'dxButton',
                 toolbar: position[0],
@@ -118,7 +128,7 @@ const CalendarStrategy = DateBoxStrategy.inherit({
                     onInitialized: function(e) {
                         e.component.registerKeyHandler('escape', this._escapeHandler.bind(this));
                     }.bind(this),
-                    onClick: (function() { this._widget._toTodayView(); }).bind(this),
+                    onClick: (args) => { this._widget._toTodayView(args); },
                     text: messageLocalization.format('dxCalendar-todayButtonText'),
                     type: 'today'
                 }
@@ -129,8 +139,13 @@ const CalendarStrategy = DateBoxStrategy.inherit({
             toolbarItems: toolbarItems,
             position: {
                 collision: 'flipfit flip'
-            }
+            },
+            width: 'auto'
         });
+    },
+
+    _isCalendarVisible: function() {
+        return typeUtils.isEmptyObject(this.dateBox.option('calendarOptions')) || this.dateBox.option('calendarOptions.visible') !== false;
     },
 
     _escapeHandler: function() {

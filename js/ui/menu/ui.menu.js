@@ -50,7 +50,7 @@ const DEFAULT_DELAY = {
     'hide': 300
 };
 
-const ACTIONS = ['onSubmenuShowing', 'onSubmenuShown', 'onSubmenuHiding', 'onSubmenuHidden', 'onItemContextMenu', 'onItemClick', 'onSelectionChanged'];
+const ACTIONS = ['onSubmenuShowing', 'onSubmenuShown', 'onSubmenuHiding', 'onSubmenuHidden', 'onItemContextMenu', 'onItemClick', 'onSelectionChanged', 'onItemRendered'];
 
 class Menu extends MenuBase {
 
@@ -476,7 +476,7 @@ class Menu extends MenuBase {
     }
 
     _getKeyboardListeners() {
-        return super._getKeyboardListeners().concat(this._submenus);
+        return super._getKeyboardListeners().concat(this._visibleSubmenu);
     }
 
     _createSubmenu(node, $rootItem) {
@@ -525,7 +525,7 @@ class Menu extends MenuBase {
             },
             onSelectionChanged: this._nestedItemOnSelectionChangedHandler.bind(this),
             onItemClick: this._nestedItemOnItemClickHandler.bind(this),
-            onItemRendered: this.option('onItemRendered'),
+            onItemRendered: this._nestedItemOnItemRenderedHandler.bind(this),
             onLeftFirstItem: isMenuHorizontal ? null : this._moveMainMenuFocus.bind(this, PREVITEM_OPERATION),
             onLeftLastItem: isMenuHorizontal ? null : this._moveMainMenuFocus.bind(this, NEXTITEM_OPERATION),
             onCloseRootSubmenu: this._moveMainMenuFocus.bind(this, isMenuHorizontal ? PREVITEM_OPERATION : null),
@@ -609,6 +609,10 @@ class Menu extends MenuBase {
 
     _nestedItemOnItemClickHandler(e) {
         this._actions['onItemClick'](e);
+    }
+
+    _nestedItemOnItemRenderedHandler(e) {
+        this._actions['onItemRendered'](e);
     }
 
     _attachSubmenuHandlers($rootItem, submenu) {
@@ -825,6 +829,7 @@ class Menu extends MenuBase {
         }
 
         if(submenu) {
+            this._clearTimeouts();
             submenu.show();
             this.option('focusedElement', submenu.option('focusedElement'));
         }
@@ -916,6 +921,11 @@ class Menu extends MenuBase {
     }
 
     _optionChanged(args) {
+        if(ACTIONS.indexOf(args.name) >= 0) {
+            this._initActions();
+            return;
+        }
+
         switch(args.name) {
             case 'orientation':
             case 'submenuDirection':
@@ -926,12 +936,6 @@ class Menu extends MenuBase {
                 break;
             case 'showSubmenuMode':
                 this._changeSubmenusOption(args.name, args.value);
-                break;
-            case 'onSubmenuShowing':
-            case 'onSubmenuShown':
-            case 'onSubmenuHiding':
-            case 'onSubmenuHidden':
-                this._initActions();
                 break;
             case 'adaptivityEnabled':
                 args.value ? this._initAdaptivity() : this._removeAdaptivity();

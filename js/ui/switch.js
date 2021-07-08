@@ -7,6 +7,7 @@ const registerComponent = require('../core/component_registrator');
 const Editor = require('./editor/editor');
 const eventUtils = require('../events/utils');
 const feedbackEvents = require('../events/core/emitter.feedback');
+const getBoundingRect = require('../core/utils/position').getBoundingRect;
 const themes = require('./themes');
 const fx = require('../animation/fx');
 const messageLocalization = require('../localization/message');
@@ -36,6 +37,7 @@ const Switch = Editor.inherit({
         const move = function(value, e) {
             e.preventDefault();
             e.stopPropagation();
+            this._saveValueChangeEvent(e);
             this._animateValue(value);
         };
         return extend(this.callBase(), {
@@ -192,7 +194,7 @@ const Switch = Editor.inherit({
     },
 
     _getItemSizeFunc: function() {
-        return this._$switchContainer.outerWidth(true) - this._$handle.get(0).getBoundingClientRect().width;
+        return this._$switchContainer.outerWidth(true) - getBoundingRect(this._$handle.get(0)).width;
     },
 
     _renderSubmitElement: function() {

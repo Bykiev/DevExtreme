@@ -306,6 +306,7 @@
         "dxFileManager-errorMaxFileSizeExceeded": "Taille du fichier dépasse la limite maximum permise.",
         "dxFileManager-errorInvalidSymbols": "Ce nom contient des caractères invalides.",
         "dxFileManager-errorDefault": "Erreur non spécifié.",
+        "dxFileManager-errorDirectoryOpenFailed": "TODO",
 
         "dxFileManager-commandCreate": "Nouveau répertoire",
         "dxFileManager-commandRename": "Renommer",
@@ -318,6 +319,7 @@
         "dxFileManager-commandThumbnails": "Mode vignette",
         "dxFileManager-commandDetails": "Mode détails",
         "dxFileManager-commandClearSelection": "Vider sélection",
+        "dxFileManager-commandShowNavPane": "TODO",
 
         "dxFileManager-dialogDirectoryChooserTitle": "Sélectionner répertoire de destination",
         "dxFileManager-dialogDirectoryChooserButtonText": "Sélectionner",

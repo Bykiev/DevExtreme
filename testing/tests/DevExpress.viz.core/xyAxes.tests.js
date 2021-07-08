@@ -3069,6 +3069,90 @@ QUnit.test('Get scale breaks in the viewport', function(assert) {
     ]);
 });
 
+QUnit.test('Scale breaks with the viewport passed to the translator', function(assert) {
+    this.updateOptions({
+        breakStyle: { width: 10 },
+        breaks: [
+            { startValue: 10, endValue: 100 },
+            { startValue: 200, endValue: 300 },
+            { startValue: 310, endValue: 360 },
+            { startValue: 500, endValue: 600 }
+        ]
+    });
+
+    this.axis.visualRange(250, 540);
+    this.axis.createTicks(this.canvas);
+
+    const breaks = this.translator.updateBusinessRange.lastCall.args[0].breaks;
+    const userBreaks = this.translator.updateBusinessRange.lastCall.args[0].userBreaks;
+
+    assert.deepEqual(breaks, [
+        { from: 250, to: 300, cumulativeWidth: 10 },
+        { from: 310, to: 360, cumulativeWidth: 20 },
+        { from: 500, to: 540, cumulativeWidth: 30 }
+    ]);
+    assert.deepEqual(userBreaks, [
+        { from: 10, to: 100 },
+        { from: 200, to: 300 },
+        { from: 310, to: 360 },
+        { from: 500, to: 600 }
+    ]);
+});
+
+QUnit.test('Scale breaks passed to the translator', function(assert) {
+    this.updateOptions({
+        breakStyle: { width: 10 },
+        breaks: [
+            { startValue: 10, endValue: 100 },
+            { startValue: 200, endValue: 300 },
+            { startValue: 310, endValue: 360 },
+            { startValue: 500, endValue: 600 }
+        ],
+        min: 0,
+        max: 700
+    });
+
+    this.axis.createTicks(this.canvas);
+
+    const breaks = this.translator.updateBusinessRange.lastCall.args[0].breaks;
+    const userBreaks = this.translator.updateBusinessRange.lastCall.args[0].userBreaks;
+
+    assert.deepEqual(breaks, [
+        { from: 10, to: 100, cumulativeWidth: 10 },
+        { from: 200, to: 300, cumulativeWidth: 20 },
+        { from: 310, to: 360, cumulativeWidth: 30 },
+        { from: 500, to: 600, cumulativeWidth: 40 }
+    ]);
+    assert.deepEqual(userBreaks, [
+        { from: 10, to: 100 },
+        { from: 200, to: 300 },
+        { from: 310, to: 360 },
+        { from: 500, to: 600 }
+    ]);
+});
+
+QUnit.test('Scale breaks with the viewport, breaks should be passed to the tick generator filtered', function(assert) {
+    this.updateOptions({
+        breakStyle: { width: 10 },
+        breaks: [
+            { startValue: 10, endValue: 100 },
+            { startValue: 200, endValue: 300 },
+            { startValue: 310, endValue: 360 },
+            { startValue: 500, endValue: 600 }
+        ],
+        min: 0,
+        max: 800
+    });
+
+    // set visual range by option
+    this.axis.setCustomVisualRange([511, 700]);
+    this.axis.validate();
+
+    this.axis.createTicks(this.canvas);
+
+    assert.deepEqual(this.tickGeneratorSpy.lastCall.args[7], [{ from: 511, to: 600, cumulativeWidth: 10 }]);
+});
+
 QUnit.test('Do not get scale break if viewport inside it', function(assert) {
     this.updateOptions({
         breaks: [{ startValue: 200, endValue: 500 }]
@@ -3211,7 +3295,7 @@ QUnit.test('Datetime axis, breaks values are string', function(assert) {
 
 QUnit.test('Remove groups on disposing', function(assert) {
     this.renderSettings.scaleBreaksGroup = this.renderer.g();
-    const axis = this.createAxis(this.renderSettings, $.extend(true, this.options, {
+    const axis = this.createSimpleAxis(this.renderSettings, $.extend(true, this.options, {
         breaks: [
             { startValue: 50, endValue: 100 },
             { startValue: 70, endValue: 150 }
@@ -3225,7 +3309,6 @@ QUnit.test('Remove groups on disposing', function(assert) {
         min: 0,
         max: 140
     }));
-
     this.translator.getBusinessRange.returns(new rangeModule.Range({
         breaks: [
             { startValue: 50, endValue: 100 },
@@ -3248,6 +3331,54 @@ QUnit.test('Remove groups on disposing', function(assert) {
 
     assert.ok(this.renderer.g.getCall(1).returnValue.dispose.called);
     assert.ok(this.renderer.clipRect.getCall(1).returnValue.dispose.called);
+});
+
+QUnit.test('T889259. Scale breaks should be into account in the translator after update', function(assert) {
+    // first render
+    this.updateOptions({
+        breaks: []
+    });
+
+    this.axis.visualRange(250, 540);
+    this.axis.createTicks(this.canvas);
+
+    // second render
+    this.translator.updateBusinessRange.reset();
+    this.updateOptions({
+        breaks: [{ startValue: 300, endValue: 400 }]
+    });
+    this.axis.createTicks(this.canvas);
+
+    const updateBusinessRange = this.translator.updateBusinessRange;
+    for(let i = 1; i < updateBusinessRange.callCount; i++) {
+        assert.deepEqual(updateBusinessRange.args[i][0].breaks, [{ from: 300, to: 400, cumulativeWidth: 0 }]);
+    }
+});
+
+QUnit.test('Tick generator should get initial breaks', function(assert) {
+    const that = this;
+    this.tickGeneratorSpy = sinon.spy(function() {
+        return {
+            ticks: that.generatedTicks || [],
+            minorTicks: that.generatedMinorTicks || [],
+            tickInterval: that.generatedTickInterval,
+            breaks: [{ from: 350, to: 450, cumulativeWidth: 0 }]
+        };
+    });
+    this.updateOptions({
+        breaks: [{ startValue: 300, endValue: 400 }]
+    });
+
+    this.axis.visualRange(250, 540);
+
+    this.axis.createTicks(this.canvas);
+    this.axis.createTicks(this.canvas);
+
+    assert.deepEqual(this.tickGeneratorSpy.lastCall.args[7], [{
+        from: 300,
+        to: 400,
+        cumulativeWidth: 0
+    }]);
 });
 
 QUnit.module('Datetime scale breaks. Weekends and holidays', $.extend({}, environment2DTranslator, {
@@ -4656,6 +4787,13 @@ QUnit.test('Recalculate scale breaks', function(assert) {
         { from: 310, to: 360, cumulativeWidth: 20 },
         { from: 500, to: 540, cumulativeWidth: 30 }
     ]);
+
+    assert.deepEqual(this.translator.updateBusinessRange.lastCall.args[0].userBreaks, [
+        { from: 10, to: 100 },
+        { from: 200, to: 300 },
+        { from: 310, to: 360 },
+        { from: 500, to: 600 }
+    ]);
 });
 
 QUnit.test('Calculate common range from series on adjust when one series is not visible', function(assert) {
@@ -4881,12 +5019,23 @@ QUnit.test('Update discrete translator business range after adjust axis', functi
 QUnit.module('Custom positioning', {
     beforeEach: function() {
         environment.beforeEach.call(this);
+        const that = this;
         this.generatedTicks = [10, 50, 90];
         this.options.type = 'continuous';
         this.options.visible = true;
         this.options.label = {
             visible: true,
             indentFromAxis: 5
+        };
+        this.currentBBox = 0;
+
+        that.bBoxes = [];
+        for(let i = 0; i < 100; i++) {
+            that.bBoxes.push({ x: 1, y: 2, height: 10, width: 20 });
+        }
+
+        this.renderer.bBoxTemplate = function() {
+            return that.bBoxes[that.currentBBox++];
         };
 
         translator2DModule.Translator2D.restore();
@@ -4901,12 +5050,15 @@ QUnit.module('Custom positioning', {
         const horizontalAxis = this.createSimpleAxis($.extend(true, { isArgumentAxis: false, argumentType: 'numeric' }, horizontalAxisOptions));
         const verticalAxis = this.createSimpleAxis($.extend(true, { isArgumentAxis: false, isHorizontal: false, valueType: 'numeric' }, verticalAxisOptions));
 
-        horizontalAxis.getCustomPositionAxis = () => { return verticalAxis; };
-        verticalAxis.getCustomPositionAxis = () => { return horizontalAxis; };
+        horizontalAxis.getOrthogonalAxis = () => { return verticalAxis; };
+        verticalAxis.getOrthogonalAxis = () => { return horizontalAxis; };
 
         horizontalAxis.draw(this.canvas);
         verticalAxis.draw(this.canvas);
         horizontalAxis.draw(this.canvas);
+
+        horizontalAxis.resolveOverlappingForCustomPositioning([verticalAxis]);
+        verticalAxis.resolveOverlappingForCustomPositioning([horizontalAxis]);
 
         return { horizontalAxis, verticalAxis };
     }
@@ -5021,4 +5173,166 @@ QUnit.test('Validate \'customPosition\' option', function(assert) {
     assert.ok(horizontalAxis.customPositionIsBoundary());
     assert.equal(horizontalAxis.getResolvedBoundaryPosition(), 'bottom');
     assert.ok(horizontalAxis.customPositionEqualsToPredefined());
+});
+
+QUnit.test('Resolve label overlapping by axis (in the middle, labels position by default)', function(assert) {
+    this.bBoxes[17] = { x: 1, y: 10, height: 18, width: 20 };
+    this.bBoxes[18] = { x: 465, y: 10, height: 590, width: 0 };
+    this.bBoxes[19] = { x: 1, y: 10, height: 18, width: 20 };
+
+    this.bBoxes[40] = { x: 10, y: -43, height: 18, width: 20 };
+    this.bBoxes[41] = { x: 20, y: 264, height: 0, width: 890 };
+    this.bBoxes[42] = { x: 10, y: -43, height: 18, width: 20 };
+
+    const { horizontalAxis, verticalAxis } = this.drawOrthogonalAxes({
+        customPosition: 57,
+        label: {
+            position: 'bottom',
+            indentFromAxis: 10
+        }
+    }, {
+        customPosition: 50,
+        label: {
+            position: 'left',
+            indentFromAxis: 10
+        }
+    });
+
+    assert.deepEqual(horizontalAxis._majorTicks[1].label.attr.getCall(11).args[0], { translateX: 469 });
+    assert.deepEqual(verticalAxis._majorTicks[1].label.attr.getCall(13).args[0], { translateY: 284 });
+});
+
+QUnit.test('Resolve label overlapping by axis (labels shifted outside)', function(assert) {
+    this.bBoxes[17] = { x: -1, y: 10, height: 18, width: 20 };
+    this.bBoxes[18] = { x: 465, y: 10, height: 590, width: 0 };
+    this.bBoxes[19] = { x: -1, y: 10, height: 18, width: 20 };
+
+    this.bBoxes[40] = { x: 10, y: -41, height: 18, width: 20 };
+    this.bBoxes[41] = { x: 20, y: 264, height: 0, width: 890 };
+    this.bBoxes[42] = { x: 10, y: -41, height: 18, width: 20 };
+
+    const { horizontalAxis, verticalAxis } = this.drawOrthogonalAxes({
+        customPosition: 57,
+        label: {
+            position: 'bottom',
+            indentFromAxis: 10
+        }
+    }, {
+        customPosition: 50,
+        label: {
+            position: 'left',
+            indentFromAxis: 10
+        }
+    });
+
+    assert.deepEqual(horizontalAxis._majorTicks[1].label.attr.getCall(11).args[0], { translateX: 441 });
+    assert.deepEqual(verticalAxis._majorTicks[1].label.attr.getCall(13).args[0], { translateY: 310 });
+});
+
+QUnit.test('Resolve label overlapping by axis (labels shifted inside)', function(assert) {
+    this.bBoxes[17] = { x: 3, y: 10, height: 18, width: 20 };
+    this.bBoxes[18] = { x: 465, y: 10, height: 590, width: 0 };
+    this.bBoxes[19] = { x: 3, y: 10, height: 18, width: 20 };
+
+    this.bBoxes[40] = { x: 10, y: -45, height: 18, width: 20 };
+    this.bBoxes[41] = { x: 20, y: 264, height: 0, width: 890 };
+    this.bBoxes[42] = { x: 10, y: -45, height: 18, width: 20 };
+
+    const { horizontalAxis, verticalAxis } = this.drawOrthogonalAxes({
+        customPosition: 57,
+        label: {
+            position: 'bottom',
+            indentFromAxis: 10
+        }
+    }, {
+        customPosition: 50,
+        label: {
+            position: 'left',
+            indentFromAxis: 10
+        }
+    });
+
+    assert.deepEqual(horizontalAxis._majorTicks[1].label.attr.getCall(11).args[0], { translateX: 467 });
+    assert.deepEqual(verticalAxis._majorTicks[1].label.attr.getCall(13).args[0], { translateY: 286 });
+});
+
+QUnit.test('Resolve label overlapping by axis (in the middle, other labels position)', function(assert) {
+    this.bBoxes[17] = { x: 1, y: 10, height: 18, width: 20 };
+    this.bBoxes[18] = { x: 465, y: 10, height: 590, width: 0 };
+    this.bBoxes[19] = { x: 1, y: 10, height: 18, width: 20 };
+
+    this.bBoxes[40] = { x: 10, y: -43, height: 18, width: 20 };
+    this.bBoxes[41] = { x: 20, y: 264, height: 0, width: 890 };
+    this.bBoxes[42] = { x: 10, y: -43, height: 18, width: 20 };
+
+    const { horizontalAxis, verticalAxis } = this.drawOrthogonalAxes({
+        customPosition: 57,
+        label: {
+            position: 'top',
+            indentFromAxis: 10
+        }
+    }, {
+        customPosition: 50,
+        label: {
+            position: 'right',
+            indentFromAxis: 10
+        }
+    });
+
+    assert.deepEqual(horizontalAxis._majorTicks[1].label.attr.getCall(11).args[0], { translateX: 439 });
+    assert.deepEqual(verticalAxis._majorTicks[1].label.attr.getCall(13).args[0], { translateY: 312 });
+});
+
+QUnit.test('Resolve label overlapping by opposite label (labels position by default)', function(assert) {
+    this.bBoxes[21] = { x: 1, y: 18, height: 18, width: 20 };
+    this.bBoxes[22] = { x: 6, y: 2, height: 18, width: 20 };
+    this.bBoxes[23] = { x: 1, y: 18, height: 18, width: 20 };
+
+    this.bBoxes[36] = { x: 6, y: 2, height: 18, width: 20 };
+    this.bBoxes[37] = { x: 1, y: 72, height: 18, width: 20 };
+    this.bBoxes[38] = { x: 6, y: 2, height: 18, width: 20 };
+
+    const { horizontalAxis, verticalAxis } = this.drawOrthogonalAxes({
+        customPosition: 57,
+        label: {
+            position: 'bottom',
+            indentFromAxis: 10
+        }
+    }, {
+        customPosition: 50,
+        label: {
+            position: 'left',
+            indentFromAxis: 10
+        }
+    });
+
+    assert.deepEqual(horizontalAxis._majorTicks[1].label.attr.getCall(15).args[0], { translateY: 218 });
+    assert.deepEqual(verticalAxis._majorTicks[1].label.attr.getCall(15).args[0], { translateX: 469 });
+});
+
+QUnit.test('Resolve label overlapping by opposite label (other labels position)', function(assert) {
+    this.bBoxes[21] = { x: 16, y: 28, height: 18, width: 20 };
+    this.bBoxes[22] = { x: -4, y: -18, height: 18, width: 20 };
+    this.bBoxes[23] = { x: 16, y: 28, height: 18, width: 20 };
+
+    this.bBoxes[36] = { x: -4, y: -28, height: 18, width: 20 };
+    this.bBoxes[37] = { x: 6, y: 14, height: 18, width: 20 };
+    this.bBoxes[38] = { x: -4, y: -28, height: 18, width: 20 };
+
+    const { horizontalAxis, verticalAxis } = this.drawOrthogonalAxes({
+        customPosition: 57,
+        label: {
+            position: 'top',
+            indentFromAxis: 10
+        }
+    }, {
+        customPosition: 50,
+        label: {
+            position: 'right',
+            indentFromAxis: 10
+        }
+    });
+
+    assert.deepEqual(horizontalAxis._majorTicks[1].label.attr.getCall(15).args[0], { translateY: 246 });
+    assert.deepEqual(verticalAxis._majorTicks[1].label.attr.getCall(15).args[0], { translateX: 439 });
 });

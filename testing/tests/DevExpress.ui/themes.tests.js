@@ -34,6 +34,8 @@ function loadCss(frame, cssFileName) {
         return rulesFromSheet(ourSheet).length > 0;
     };
 }
+const defaultTimeout = 2000;
+themes.setDefaultTimeout(defaultTimeout);
 
 QUnit.module('Selector check', () => {
     if(document.documentMode < 9) {
@@ -172,8 +174,13 @@ QUnit.module('All images are defined with data-uri and will be inlined', () => {
     });
 });
 
-QUnit.module('dx-theme changing', () => {
+QUnit.module('dx-theme changing', (hooks) => {
+    hooks.beforeEach(() => {
+        themes.setDefaultTimeout(defaultTimeout);
+        themes.resetTheme();
+    });
     test('Themes functions return right value after themes switching', function(assert) {
+        const done = assert.async();
         const genericThemeName = 'generic.light';
         const materialThemeName = 'material.blue.light';
         const linksContainer = $('<div>').addClass('links-container').appendTo('body');
@@ -192,49 +199,60 @@ QUnit.module('dx-theme changing', () => {
         linksContainer.append('<link rel=\'dx-theme\' href=\'style2.css\' data-theme=\'' + materialThemeName + '\' />');
         linksContainer.append('<link rel=\'dx-theme\' href=\'style1.css\' data-theme=\'' + genericThemeName + '\' />');
 
-        themes.init({ context: window.document, theme: materialThemeName });
-        assert.ok(themes.isMaterial(), 'isMaterial is true after material theme init');
-        assert.notOk(themes.isGeneric(), 'isGeneric is false after material theme init');
+        themes.initialized(() => {
+            assert.ok(themes.isMaterial(), 'isMaterial is true after material theme init');
+            assert.notOk(themes.isGeneric(), 'isGeneric is false after material theme init');
 
-        themes.current(genericThemeName);
-        assert.ok(themes.isGeneric(), 'isGeneric after activate generic theme');
-        assert.notOk(themes.isMaterial(), 'isMaterial is false after generic theme init');
-        assert.notOk(themes.isIos7(), 'isIos7 is false after generic theme init');
-        themes.resetTheme();
-        assert.notOk(themes.isGeneric(), 'isGeneric is false after reset');
+            themes.current(genericThemeName);
+            assert.ok(themes.isGeneric(), 'isGeneric after activate generic theme');
+            assert.notOk(themes.isMaterial(), 'isMaterial is false after generic theme init');
+            themes.resetTheme();
+            assert.notOk(themes.isGeneric(), 'isGeneric is false after reset');
 
-        $.each(testThemes, function(_, themeData) {
-            const anotherThemeName = themeData.anotherThemeName || genericThemeName;
-            assert.ok(themes[themeData.functionName](themeData.themeName), themeData.functionName + ' with ' + themeData.themeName + ' argument');
-            assert.notOk(themes[themeData.functionName](anotherThemeName), themeData.functionName + ' with ' + anotherThemeName + ' argument');
+            $.each(testThemes, function(_, themeData) {
+                const anotherThemeName = themeData.anotherThemeName || genericThemeName;
+                assert.ok(themes[themeData.functionName](themeData.themeName), themeData.functionName + ' with ' + themeData.themeName + ' argument');
+                assert.notOk(themes[themeData.functionName](anotherThemeName), themeData.functionName + ' with ' + anotherThemeName + ' argument');
+            });
+
+            linksContainer.remove();
+            done();
         });
-        linksContainer.remove();
+
+        themes.init({ context: window.document, theme: materialThemeName });
     });
 
     test('Themes functions return right value if theme file loaded after ready event (T666366)', function(assert) {
+        const done = assert.async();
         const linksContainer = $('<div>').addClass('links-container').appendTo('body');
         linksContainer.append('<link rel=\'dx-theme\' href=\'style2.css\' data-theme=\'material.blue.light\' />');
 
         themes.init({ context: window.document, theme: 'material.blue.light' });
-        themes.resetTheme();
+        themes.initialized(() => {
+            themes.resetTheme();
+            linksContainer.append('<style>.dx-theme-marker { font-family: \'dx.generic.light\' }</style>');
 
-        linksContainer.append('<style>.dx-theme-marker { font-family: \'dx.generic.light\' }</style>');
+            assert.equal(themes.isGeneric(), true, 'isGeneric returns \'true\' if css has been added after themes initialization');
 
-        assert.equal(themes.isGeneric(), true, 'isGeneric returns \'true\' if css has been added after themes initialization');
+            linksContainer.remove();
+            done();
+        });
 
-        linksContainer.remove();
     });
 });
 
 QUnit.module('dx-theme links', (hooks) => {
     let $frame;
+    const frames = [];
     hooks.beforeEach(() => {
+        themes.setDefaultTimeout(100);
         $frame = $('<iframe></iframe>').appendTo('body');
+        frames.push($frame);
     });
 
-    hooks.afterEach(() => {
-        $frame.remove();
-    });
+    hooks.afterEach(() => themes.setDefaultTimeout(defaultTimeout));
+
+    hooks.after(() => frames.forEach((frame) => frame.remove()));
 
     function frameDoc() {
         return $frame[0].contentWindow.document;
@@ -249,12 +267,14 @@ QUnit.module('dx-theme links', (hooks) => {
     }
 
     test('should not add additional link if no dx-theme found', function(assert) {
+        const done = assert.async();
         // arrange
         // act
         themes.init({ _autoInit: true, context: frameDoc() });
         // assert
         const realStylesheets = getFrameStyleLinks();
         assert.equal(realStylesheets.length, 0, 'No stylesheets should be added');
+        themes.initialized(done);
     });
 
     test('should throw if non-existing platform requested', function(assert) {
@@ -267,6 +287,8 @@ QUnit.module('dx-theme links', (hooks) => {
     });
 
     test('theme by platform only', function(assert) {
+        const done = assert.async();
+        themes.resetTheme();
         // arrange
         writeToFrame('<link rel=\'dx-theme\' href=\'myCss\' data-theme=\'myPlatform.theme1\' />');
         // act
@@ -275,9 +297,12 @@ QUnit.module('dx-theme links', (hooks) => {
         const realStylesheets = getFrameStyleLinks();
         assert.equal(realStylesheets.length, 1, 'Single dx-theme should be converted to regular stylesheet');
         assert.equal(realStylesheets.attr('href'), 'myCss');
+        themes.initialized(done);
     });
 
     test('theme by platform and color scheme', function(assert) {
+        const done = assert.async();
+        themes.resetTheme();
         // arrange
         writeToFrame('<link rel=\'dx-theme\' href=\'style1.css\' data-theme=\'myPlatform.theme1\' />');
         writeToFrame('<link rel=\'dx-theme\' href=\'style2.css\' data-theme=\'myPlatform.theme2\' />');
@@ -287,9 +312,12 @@ QUnit.module('dx-theme links', (hooks) => {
         const realStylesheets = getFrameStyleLinks();
         assert.equal(realStylesheets.length, 1, 'Single dx-theme should be converted to regular stylesheet');
         assert.equal(realStylesheets.attr('href'), 'style2.css');
+        themes.initialized(done);
     });
 
     test('change theme by string', function(assert) {
+        const done = assert.async();
+        themes.resetTheme();
         // arrange
         writeToFrame('<link rel=\'dx-theme\' href=\'style1.css\' data-theme=\'myPlatform.theme1\' />');
         writeToFrame('<link rel=\'dx-theme\' href=\'style2.css\' data-theme=\'myPlatform.theme2\' />');
@@ -300,9 +328,12 @@ QUnit.module('dx-theme links', (hooks) => {
         const realStylesheets = getFrameStyleLinks();
         assert.equal(realStylesheets.length, 1, 'Single dx-theme should be converted to regular stylesheet');
         assert.equal(realStylesheets.attr('href'), 'style1.css');
+        themes.initialized(done);
     });
 
     test('change theme by configuration object', function(assert) {
+        const done = assert.async();
+        themes.resetTheme();
         // arrange
         writeToFrame('<link rel=\'dx-theme\' href=\'style1.css\' data-theme=\'myPlatform.theme1\' />');
         writeToFrame('<link rel=\'dx-theme\' href=\'style2.css\' data-theme=\'myPlatform.theme2\' />');
@@ -313,6 +344,7 @@ QUnit.module('dx-theme links', (hooks) => {
         const realStylesheets = getFrameStyleLinks();
         assert.equal(realStylesheets.length, 1, 'Single dx-theme should be converted to regular stylesheet');
         assert.equal(realStylesheets.attr('href'), 'style2.css');
+        themes.initialized(done);
     });
 
     test('method themes.ready calls a callback function after themes loading', function(assert) {
@@ -334,6 +366,8 @@ QUnit.module('dx-theme links', (hooks) => {
     });
 
     test('default theme is first if not specified', function(assert) {
+        const done = assert.async();
+        themes.resetTheme();
         // arrange
         writeToFrame('<link rel=\'dx-theme\' href=\'style1.css\' data-theme=\'myPlatform.theme1\' />');
         writeToFrame('<link rel=\'dx-theme\' href=\'style2.css\' data-theme=\'myPlatform.theme2\' />');
@@ -341,9 +375,12 @@ QUnit.module('dx-theme links', (hooks) => {
         themes.init({ theme: 'myPlatform', context: frameDoc() });
         // assert
         assert.equal(getFrameStyleLinks().attr('href'), 'style1.css');
+        themes.initialized(done);
     });
 
     test('default theme defined by active attribute if not specified', function(assert) {
+        const done = assert.async();
+        themes.resetTheme();
         // arrange
         writeToFrame('<link rel=\'dx-theme\' href=\'style1.css\' data-theme=\'myPlatform.theme1\' data-active=\'nonsense\' />');
         writeToFrame('<link rel=\'dx-theme\' href=\'style2.css\' data-theme=\'myPlatform.theme2\' data-active=\'true\' />');
@@ -351,9 +388,12 @@ QUnit.module('dx-theme links', (hooks) => {
         themes.init({ theme: 'myPlatform', context: frameDoc() });
         // assert
         assert.equal(getFrameStyleLinks().attr('href'), 'style2.css');
+        themes.initialized(done);
     });
 
     test('dx-theme should change compact theme to normal if compact has data-active=\'true\' (T449216)', function(assert) {
+        const done = assert.async();
+        themes.resetTheme();
         // arrange
         writeToFrame('<link rel=\'dx-theme\' href=\'style1.css\' data-theme=\'myPlatform.theme1\' />');
         writeToFrame('<link rel=\'dx-theme\' href=\'style1.compact.css\' data-theme=\'myPlatform.theme1.compact\' data-active=\'true\' />');
@@ -361,9 +401,12 @@ QUnit.module('dx-theme links', (hooks) => {
         themes.init({ theme: 'myPlatform.theme1', context: frameDoc() });
         // assert
         assert.equal(themes.current(), 'myPlatform.theme1');
+        themes.initialized(done);
     });
 
     test('dx-theme should select active theme if theme name is incomplete (T449216)', function(assert) {
+        const done = assert.async();
+        themes.resetTheme();
         // arrange
         writeToFrame('<link rel=\'dx-theme\' href=\'style1.css\' data-theme=\'myPlatform.theme1\' />');
         writeToFrame('<link rel=\'dx-theme\' href=\'style1.compact.css\' data-theme=\'myPlatform.theme1.compact\' data-active=\'true\' />');
@@ -372,9 +415,12 @@ QUnit.module('dx-theme links', (hooks) => {
         themes.current({ theme: 'myPlatform' });
         // assert
         assert.equal(themes.current(), 'myPlatform.theme1.compact');
+        themes.initialized(done);
     });
 
     test('read current theme name', function(assert) {
+        const done = assert.async();
+        themes.resetTheme();
         // arrange
         writeToFrame('<link rel=\'dx-theme\' href=\'style1.css\' data-theme=\'theme1\' />');
         writeToFrame('<link rel=\'dx-theme\' href=\'style2.css\' data-theme=\'theme2.dark\' />');
@@ -383,6 +429,7 @@ QUnit.module('dx-theme links', (hooks) => {
         assert.equal(themes.current(), 'theme1');
         themes.current('theme2');
         assert.equal(themes.current(), 'theme2.dark');
+        themes.initialized(done);
     });
 
     test('loadCallback option for init', function(assert) {
@@ -475,12 +522,17 @@ QUnit.module('dx-theme links', (hooks) => {
         });
     });
 
-    test('current theme name is null if without any links', function(assert) {
+    test('current theme name is null if without any links (first load)', function(assert) {
+        const done = assert.async();
+        themes.resetTheme();
         themes.init({ context: frameDoc(), _autoInit: true });
         assert.strictEqual(themes.current(), null);
+        themes.ready(done);
     });
 
     test('move classes from previous viewport to new viewport', function(assert) {
+        const done = assert.async();
+        themes.resetTheme();
         writeToFrame('<link rel=\'dx-theme\' href=\'style1.css\' data-theme=\'mytheme\' />');
         themes.init({ context: frameDoc(), theme: 'mytheme' });
 
@@ -491,11 +543,16 @@ QUnit.module('dx-theme links', (hooks) => {
 
         viewPortChanged.fire($newElement, $element);
 
-        assert.equal($element.hasClass('dx-theme-mytheme'), false, 'theme class removed');
-        assert.ok($newElement.hasClass('dx-theme-mytheme'), 'theme class added');
+        themes.initialized(() => {
+            assert.equal($element.hasClass('dx-theme-mytheme'), false, 'theme class removed');
+            assert.ok($newElement.hasClass('dx-theme-mytheme'), 'theme class added');
+            done();
+        });
     });
 
     test('attachCssClasses removes classes for old theme', function(assert) {
+        const done = assert.async();
+        themes.resetTheme();
         writeToFrame('<link rel=\'dx-theme\' href=\'style1.css\' data-theme=\'oldtheme\' />');
         writeToFrame('<link rel=\'dx-theme\' href=\'style1.css\' data-theme=\'newtheme\' />');
         themes.init({ context: frameDoc(), theme: 'oldtheme' });
@@ -506,10 +563,13 @@ QUnit.module('dx-theme links', (hooks) => {
 
         assert.equal($element.hasClass('dx-theme-oldtheme'), false, 'old theme class deleted');
         assert.equal($element.hasClass('dx-theme-oldtheme-typography'), false, 'old typography class deleted');
+        themes.initialized(done);
     });
 
 
     test('dx-color-scheme class for different themes', function(assert) {
+        const done = assert.async();
+        themes.resetTheme();
         writeToFrame('<link rel=\'dx-theme\' href=\'style1.css\' data-theme=\'generic.light\' />');
         writeToFrame('<link rel=\'dx-theme\' href=\'style2.css\' data-theme=\'generic.light.compact\' />');
         writeToFrame('<link rel=\'dx-theme\' href=\'style3.css\' data-theme=\'material.blue.light\' />');
@@ -518,13 +578,25 @@ QUnit.module('dx-theme links', (hooks) => {
         themes.init({ context: frameDoc(), theme: 'generic.light' });
 
         viewPortUtils.value($('.dx-viewport', frameDoc()));
-        assert.ok($('.dx-theme-generic', frameDoc()).hasClass('dx-color-scheme-light'), 'right dx-color-scheme class for generic');
 
-        themes.current('generic.light.compact');
-        assert.ok($('.dx-theme-generic', frameDoc()).hasClass('dx-color-scheme-light'), 'right dx-color-scheme class for generic.compact');
+        themes.initialized(() => {
+            assert.ok($('.dx-theme-generic', frameDoc()).hasClass('dx-color-scheme-light'), 'right dx-color-scheme class for generic');
 
-        themes.current('material.blue.light');
-        assert.ok($('.dx-theme-material', frameDoc()).hasClass('dx-color-scheme-blue-light'), 'right dx-color-scheme class for material');
+            themes.current('generic.light.compact');
+
+            themes.initialized(() => {
+                assert.ok($('.dx-theme-generic', frameDoc()).hasClass('dx-color-scheme-light'), 'right dx-color-scheme class for generic.compact');
+
+                themes.current('material.blue.light');
+
+                themes.initialized(() => {
+                    assert.ok($('.dx-theme-material', frameDoc()).hasClass('dx-color-scheme-blue-light'), 'right dx-color-scheme class for material');
+                    done();
+                });
+            });
+        });
+
+
     });
 });
 
@@ -625,3 +697,120 @@ QUnit.module('web font checker', () => {
     });
 });
 
+
+QUnit.module('initialized method', (hooks) => {
+    const createdFrames = [];
+
+    hooks.after(function() {
+        createdFrames.forEach($frame => $frame.remove());
+    });
+
+    function writeToFrame($frame, markup) {
+        frameDoc($frame).write(markup);
+    }
+
+    function frameDoc($frame) {
+        return $frame[0].contentWindow.document;
+    }
+
+    function createFrame() {
+        const $frame = $('<iframe></iframe>').appendTo('body');
+        createdFrames.push($frame);
+        return $frame;
+    }
+
+    test('initialized fires for data-theme link (init after link addition)', function(assert) {
+        const done = assert.async();
+        const url = ROOT_URL + 'testing/helpers/themeMarker.css';
+        const $frame = createFrame();
+        writeToFrame($frame, '<link id=\'testTheme\' rel=\'dx-theme\' data-theme=\'sampleTheme.sampleColorScheme\' href=\'' + url + '\' />');
+
+        themes.resetTheme();
+        themes.init({
+            _autoInit: true,
+            _forceTimeout: true,
+            context: frameDoc($frame)
+        });
+
+        themes.initialized(() => {
+            assert.equal(themes.current(), 'sampleTheme.sampleColorScheme');
+            done();
+        });
+
+    });
+
+    test('initialized fires for ordinary link (init after style addition - should run immediately)', function(assert) {
+        const done = assert.async();
+        const $frame = createFrame();
+        writeToFrame($frame, '<style>.dx-theme-marker { font-family: "dx.sampleTheme2"}</style>');
+
+        themes.resetTheme();
+        themes.init({
+            _autoInit: true,
+            _forceTimeout: true,
+            context: frameDoc($frame)
+        });
+
+        themes.initialized(() => {
+            assert.equal(themes.current(), 'sampleTheme2');
+            done();
+        });
+    });
+
+    test('initialized fires for ordinary link (init before link addition - should wait theme loading)', function(assert) {
+        const done = assert.async();
+        const url = ROOT_URL + 'testing/helpers/themeMarker.css';
+        const $frame = createFrame();
+
+        themes.setDefaultTimeout(30000);
+
+        themes.resetTheme();
+        themes.initialized(() => {
+            assert.equal(themes.current(), 'sampleTheme.sampleColorScheme');
+            themes.setDefaultTimeout(defaultTimeout);
+            done();
+        });
+
+        themes.init({
+            _autoInit: true,
+            _forceTimeout: true,
+            context: frameDoc($frame)
+        });
+
+        writeToFrame($frame, '<link rel=stylesheet href=\'' + url + '\' />');
+    });
+
+    test('initialized fires after timeout if theme is not loaded', function(assert) {
+        const done = assert.async();
+        const $frame = createFrame();
+
+        themes.resetTheme();
+        themes.init({
+            _autoInit: true,
+            _forceTimeout: true,
+            context: frameDoc($frame)
+        });
+
+        themes.initialized(() => {
+            assert.equal(themes.current(), null);
+            done();
+        });
+    });
+
+    test('initialized fires syncroniously if timeout === 0', function(assert) {
+        const $frame = createFrame();
+
+        themes.resetTheme();
+        themes.setDefaultTimeout(0);
+        themes.init({
+            _autoInit: true,
+            _forceTimeout: true,
+            context: frameDoc($frame)
+        });
+
+        themes.initialized(() => {
+            assert.ok(true);
+            themes.setDefaultTimeout(defaultTimeout);
+        });
+    });
+});

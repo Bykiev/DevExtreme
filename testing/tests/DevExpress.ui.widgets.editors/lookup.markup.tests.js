@@ -31,7 +31,7 @@ module('Lookup', {
         this.clock = sinon.useFakeTimers();
 
         this.element = $('#lookup');
-        this.instance = this.element.dxLookup({ fullScreen: false }).dxLookup('instance');
+        this.instance = this.element.dxLookup({ 'dropDownOptions.fullScreen': false }).dxLookup('instance');
         this.$field = $(this.instance._$field);
     },
     afterEach: function() {
@@ -45,6 +45,31 @@ module('Lookup', {
         assert.ok(this.element.hasClass('dx-lookup'), 'widget has class dx-lookup');
         assert.ok($(`.${LOOKUP_FIELD_CLASS}`, this.element).length, 'widget contents field');
         assert.ok($('.dx-lookup-arrow', this.element).length, 'widget contents arrow');
+    });
+
+    test('render dxLookup with predefined value and displayExpr (T929376)', function(assert) {
+        const $element = $('<div>').appendTo('#qunit-fixture');
+        $element.dxLookup({
+            items: [{ id: 0, text: 0 }, { id: 1, text: 1 }],
+            value: 0,
+            valueExpr: 'id',
+            displayExpr: 'text'
+        });
+
+        assert.strictEqual($element.find(`.${LOOKUP_FIELD_CLASS}`).text(), '0');
+    });
+
+    test('render dxLookup with placeholder and displayExpr returns empty string (T929376)', function(assert) {
+        const $element = $('<div>').appendTo('#qunit-fixture');
+        $element.dxLookup({
+            items: [{ id: 0, text: 0 }, { id: 1, text: 1 }],
+            value: null,
+            placeholder: 'test',
+            valueExpr: 'id',
+            displayExpr: () => ''
+        });
+
+        assert.strictEqual($element.find(`.${LOOKUP_FIELD_CLASS}`).text(), 'test', 'placeholder should be rendered');
     });
 
     test('regression: value is out of range (B231783)', function(assert) {

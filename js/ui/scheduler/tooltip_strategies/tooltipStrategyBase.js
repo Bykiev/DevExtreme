@@ -36,7 +36,12 @@ export class TooltipStrategyBase {
             this._list.option('dataSource', dataList);
         }
 
+        this._prepareBeforeVisibleChanged(dataList);
         this._tooltip.option('visible', true);
+    }
+
+    _prepareBeforeVisibleChanged(dataList) {
+
     }
 
     _getContentTemplate(dataList) {
@@ -85,10 +90,8 @@ export class TooltipStrategyBase {
             dataSource: dataList,
             onContentReady: this._onListRender.bind(this),
             onItemClick: e => this._onListItemClick(e),
-            itemTemplate: (item, index) => {
-                const currentData = (item.settings && item.settings.targetedAppointmentData) || item.currentData || item.data;
-                return this._renderTemplate(item.data, currentData, index, item.color);
-            }
+            itemTemplate: (item, index) => this._renderTemplate(item.data, this._getCurrentAppointmentData(item), index, item.color),
+            _swipeEnabled: false
         };
     }
 
@@ -140,10 +143,12 @@ export class TooltipStrategyBase {
 
     _onListItemClick(e) {
         this.hide();
-        if(this._extraOptions.clickEvent) {
-            this._extraOptions.clickEvent(e);
-        }
-        this._options.showAppointmentPopup(e.itemData.data, false, e.itemData.currentData);
+        this._extraOptions.clickEvent && this._extraOptions.clickEvent(e);
+        this._options.showAppointmentPopup(e.itemData.data, false, this._getCurrentAppointmentData(e.itemData));
+    }
+
+    _getCurrentAppointmentData(item) {
+        return (item.settings && item.settings.targetedAppointmentData) || item.currentData || item.data;
     }
 
     _createItemListContent(data, currentData, color) {

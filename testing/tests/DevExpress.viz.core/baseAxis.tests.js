@@ -54,6 +54,7 @@ const environment = {
         };
         this.axis.updateOptions($.extend(true, defaultOptions, options));
         this.axis._options._customVisualRange = options ? options.visualRange : undefined;
+        this.axis.setBusinessRange({});
     }
 };
 
@@ -416,6 +417,7 @@ QUnit.test('Validate label position option: bottom to right', function(assert) {
 
 QUnit.test('Check tickInterval with new canvas', function(assert) {
     this.updateOptions({});
+    this.axis.setBusinessRange({});
     this.generatedTickInterval = 2;
     this.axis.createTicks(this.canvas);
     const translator = translator2DModule.Translator2D.lastCall.returnValue;
@@ -1560,10 +1562,10 @@ const dataMarginsEnvironment = {
                 assert.deepEqual(range.categories, expectedRange.categories, 'categorties');
             } else {
                 'minVisible' in expectedRange && assert.roughEqual(translator.to(expectedRange.minVisible, -1), this.canvas.left, 1.01, 'minVisible value');
-                'maxVisible' in expectedRange && assert.roughEqual(translator.to(data.expectedRange.maxVisible, +1), this.canvas.width - this.canvas.right, 1.01, 'maxVisible value');
+                'maxVisible' in expectedRange && assert.roughEqual(translator.to(expectedRange.maxVisible, +1), this.canvas.width - this.canvas.right, 1.01, 'maxVisible value');
             }
 
-            'interval' in data.expectedRange && assert.equal(range.interval, data.expectedRange.interval, 'interval');
+            'interval' in expectedRange && assert.equal(range.interval, expectedRange.interval, 'interval');
         }
 
         const expectedVisibleArea = data.expectedVisibleArea;
@@ -2681,6 +2683,27 @@ QUnit.test('Correct zero level on value axis, min and max greater than zero - ma
         expectedRange: {
             minVisible: 0,
             maxVisible: 106
+        }
+    });
+});
+
+// T905213
+QUnit.test('Chech zero value. Datetime axis', function(assert) {
+    this.testMargins(assert, {
+        options: {
+            dataType: 'datetime',
+            valueMarginsEnabled: true,
+            minValueMargin: 0.1,
+            maxValueMargin: 0.1
+        },
+        range: {
+            min: new Date(4),
+            max: new Date(130),
+            dataType: 'datetime'
+        },
+        expectedRange: {
+            minVisible: -8,
+            maxVisible: 143
         }
     });
 });
@@ -4072,7 +4095,7 @@ QUnit.test('Viewport and whole range can have negative values if logarithmic axi
     assert.equal(businessRange.axisType, 'logarithmic');
 });
 
-QUnit.test('Viewport and whole range can have negative values if logarithmic axis and allowNegatives is set not set', function(assert) {
+QUnit.test('Viewport and whole range can have negative values if logarithmic axis and allowNegatives is not set', function(assert) {
     this.updateOptions({ visualRange: [-10, -100], wholeRange: [-10, -100], type: 'logarithmic' });
     this.axis.validate();
     this.axis.setBusinessRange({
@@ -4086,6 +4109,7 @@ QUnit.test('Viewport and whole range can have negative values if logarithmic axi
     assert.equal(businessRange.minVisible, -100);
     assert.equal(businessRange.maxVisible, -10);
     assert.equal(businessRange.axisType, 'logarithmic');
+    assert.equal(businessRange.allowNegatives, true);
 });
 
 QUnit.test('One values of whole range can have null value', function(assert) {

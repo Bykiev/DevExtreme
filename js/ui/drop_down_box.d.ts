@@ -6,7 +6,9 @@ import {
     template
 } from '../core/templates/template';
 
-import DataSource from '../data/data_source';
+import DataSource, {
+    DataSourceOptions
+} from '../data/data_source';
 
 import dxDropDownEditor, {
     dxDropDownEditorOptions
@@ -37,11 +39,19 @@ export interface dxDropDownBoxOptions extends DataExpressionMixinOptions<dxDropD
      * @type_function_param1_field1 component:dxDropDownBox
      * @type_function_param1_field2 value:any
      * @type_function_param2 contentElement:dxElement
-     * @type_function_return string|Node|jQuery
+     * @type_function_return string|Element|jQuery
      * @prevFileNamespace DevExpress.ui
      * @public
      */
     contentTemplate?: template | ((templateData: { component?: dxDropDownBox, value?: any }, contentElement: dxElement) => string | Element | JQuery);
+    /**
+     * @docid dxDropDownBoxOptions.dataSource
+     * @type string|Array<object>|DataSource|DataSourceOptions
+     * @default null
+     * @prevFileNamespace DevExpress.ui
+     * @public
+     */
+    dataSource?: string | Array<any> | DataSource | DataSourceOptions;
     /**
      * @docid dxDropDownBoxOptions.displayValueFormatter
      * @type function(value)
@@ -57,11 +67,18 @@ export interface dxDropDownBoxOptions extends DataExpressionMixinOptions<dxDropD
      * @default null
      * @type_function_param1 value:object
      * @type_function_param2 fieldElement:dxElement
-     * @type_function_return string|Node|jQuery
+     * @type_function_return string|Element|jQuery
      * @prevFileNamespace DevExpress.ui
      * @public
      */
     fieldTemplate?: template | ((value: any, fieldElement: dxElement) => string | Element | JQuery);
+    /**
+     * @docid dxDropDownBoxOptions.items
+     * @type Array<object>
+     * @prevFileNamespace DevExpress.ui
+     * @public
+     */
+    items?: Array<any>; 
     /**
      * @docid dxDropDownBoxOptions.openOnFieldClick
      * @default true

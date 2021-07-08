@@ -2,10 +2,11 @@ import $ from 'jquery';
 import renderer from 'core/renderer';
 const { test } = QUnit;
 import 'ui/file_manager';
+import CustomFileSystemProvider from 'file_management/custom_provider';
 import FileItemsController from 'ui/file_manager/file_items_controller';
 import FileManagerBreadcrumbs from 'ui/file_manager/ui.file_manager.breadcrumbs';
 import fx from 'animation/fx';
-import { FileManagerWrapper, FileManagerBreadcrumbsWrapper, createTestFileSystem, createHugeFileSystem, Consts } from '../../../helpers/fileManagerHelpers.js';
+import { FileManagerWrapper, FileManagerBreadcrumbsWrapper, FileManagerProgressPanelWrapper, createTestFileSystem } from '../../../helpers/fileManagerHelpers.js';
 
 const moduleConfig = {
 
@@ -33,6 +34,7 @@ const moduleConfig = {
         this.fileManager = this.$element.dxFileManager('instance');
 
         this.wrapper = new FileManagerWrapper(this.$element);
+        this.progressPanelWrapper = new FileManagerProgressPanelWrapper(this.$element);
 
         this.clock.tick(400);
     },
@@ -660,87 +662,261 @@ QUnit.module('Navigation operations', moduleConfig, () => {
         assert.ok(this.wrapper.isThumbnailsItemFocused(itemName), 'item focused');
     });
 
-    test('Details view - must keep scroll position', function(assert) {
-        this.fileManager.option({
-            width: 500,
-            height: 250,
-            fileSystemProvider: createHugeFileSystem(),
-            itemView: {
-                mode: 'details'
+    test('Navigation to forbidden folder rises an error', function(assert) {
+        this.fileManager.option('fileSystemProvider',
+            new CustomFileSystemProvider({
+                getItems: pathInfo => {
+                    if(pathInfo.path === '') {
+                        return [{ name: 'Folder', isDirectory: 'true' }];
+                    } else {
+                        throw new Error('Error');
+                    }
+                }
+            }));
+        this.clock.tick(400);
+
+        this.wrapper.findThumbnailsItem('Folder').trigger('dxdblclick');
+        this.clock.tick(400);
+
+        const infos = this.progressPanelWrapper.getInfos();
+        assert.strictEqual(infos.length, 1, 'There is one notification on panel');
+
+        assert.strictEqual(infos[0].common.commonText, 'The directory cannot be opened', 'Title is correct');
+
+        const details = infos[0].details;
+        assert.strictEqual(details.length, 1, 'Notification has one details section');
+
+        assert.strictEqual(details[0].commonText, 'Folder', 'Common text is correct');
+        assert.strictEqual(details[0].errorText, 'Unspecified error.', 'Error text is correct');
+
+        assert.strictEqual(this.wrapper.getThumbnailsItems().length, 1);
+        assert.strictEqual(this.wrapper.getThumbnailsItemName(0), 'Folder', 'The only item is shown');
+        assert.strictEqual(this.wrapper.getBreadcrumbsPath(), 'Files', 'Breadcrumbs has correct path');
+        assert.strictEqual(this.wrapper.getFocusedItemText(), 'Files', 'Root folder selected');
+        assert.strictEqual(this.fileManager.getCurrentDirectory().path, '', 'Current directory is root');
+        assert.strictEqual(this.fileManager.option('currentPath'), '', 'Current path is correct');
+    });
+
+    test('Forbiddance of current folder and refresh leads to navigating up and rising an error', function(assert) {
+        const provider = new CustomFileSystemProvider({
+            getItems: function(pathInfo) {
+                if(pathInfo.path === '') {
+                    return [{ name: 'Folder', isDirectory: 'true' }];
+                } else if(pathInfo.path === 'Folder' && !this.forbidAll) {
+                    return [{ name: 'Subfolder', isDirectory: 'true' }];
+                } else if(pathInfo.path === 'Folder/Subfolder' && !this.forbidAll) {
+                    return [];
+                } else {
+                    throw new Error('Error');
+                }
             }
         });
+
+        this.fileManager.option('fileSystemProvider', provider);
         this.clock.tick(400);
 
-        const scrollPosition = 100;
-        this.wrapper.getDetailsViewScrollableContainer().scrollTop(scrollPosition);
+        this.wrapper.findThumbnailsItem('Folder').trigger('dxdblclick');
         this.clock.tick(400);
 
-        this.fileManager.refresh();
-        this.clock.tick(800);
+        let infos = this.progressPanelWrapper.getInfos();
+        assert.strictEqual(infos.length, 0, 'No notifications');
 
-        assert.strictEqual(this.wrapper.getDetailsViewScrollableContainer().scrollTop(), scrollPosition, 'scroll position is the same');
+        this.wrapper.findThumbnailsItem('Subfolder').trigger('dxdblclick');
+        this.clock.tick(400);
+
+        infos = this.progressPanelWrapper.getInfos();
+        assert.strictEqual(infos.length, 0, 'No notifications');
+
+        provider.forbidAll = true;
+        this.wrapper.getToolbarButton('Refresh').trigger('dxclick');
+        this.clock.tick(700);
+
+        infos = this.progressPanelWrapper.getInfos();
+        assert.ok(infos.length > 0, 'There is some notification on panel');
+
+        assert.strictEqual(infos[0].common.commonText, 'The directory cannot be opened', 'Title is correct');
+
+        const details = infos[0].details;
+        assert.strictEqual(details.length, 1, 'Notification has one details section');
+
+        assert.strictEqual(details[0].commonText, 'Folder', 'Common text is correct');
+        assert.strictEqual(details[0].errorText, 'Unspecified error.', 'Error text is correct');
+
+        assert.strictEqual(this.wrapper.getBreadcrumbsPath(), 'Files', 'Breadcrumbs has correct path');
+        assert.strictEqual(this.wrapper.getFocusedItemText(), 'Files', 'Root folder selected');
+        assert.strictEqual(this.fileManager.getCurrentDirectory().path, '', 'Current directory is root');
+        assert.strictEqual(this.fileManager.option('currentPath'), '', 'Current path is correct');
     });
 
-    test('Thumbnails view - must keep scroll position', function(assert) {
-        const originalFunc = renderer.fn.width;
-        renderer.fn.width = () => 1200;
+    test('Expanding forbidden treeview node leads to rising an error and no navigating up', function(assert) {
+        this.fileManager.option('fileSystemProvider',
+            new CustomFileSystemProvider({
+                getItems: pathInfo => {
+                    if(pathInfo.path === '') {
+                        return [{ name: 'Folder', isDirectory: 'true' }, { name: 'Other folder', isDirectory: 'true' }];
+                    } else if(pathInfo.path === 'Folder') {
+                        return [{ name: 'Subfolder', isDirectory: 'true' }];
+                    } else {
+                        throw new Error('Error');
+                    }
+                }
+            }));
+        this.clock.tick(400);
 
+        this.wrapper.findThumbnailsItem('Folder').trigger('dxdblclick');
+        this.clock.tick(400);
+
+        let infos = this.progressPanelWrapper.getInfos();
+        assert.strictEqual(infos.length, 0, 'No notifications');
+
+        this.wrapper.getFolderToggles().last().trigger('dxclick');
+        this.clock.tick(400);
+
+        infos = this.progressPanelWrapper.getInfos();
+        assert.strictEqual(infos.length, 1, 'There is one notification on panel');
+
+        assert.strictEqual(infos[0].common.commonText, 'The directory cannot be opened', 'Title is correct');
+
+        const details = infos[0].details;
+        assert.strictEqual(details.length, 1, 'Notification has one details section');
+
+        assert.strictEqual(details[0].commonText, 'Other folder', 'Common text is correct');
+        assert.strictEqual(details[0].errorText, 'Unspecified error.', 'Error text is correct');
+
+        assert.strictEqual(this.wrapper.getThumbnailsItems().length, 2);
+        assert.strictEqual(this.wrapper.getThumbnailsItemName(0), '..', 'The parent folder item is shown');
+        assert.strictEqual(this.wrapper.getThumbnailsItemName(1), 'Subfolder', 'The subfolder item is shown');
+        assert.strictEqual(this.wrapper.getBreadcrumbsPath(), 'Files/Folder', 'Breadcrumbs has correct path');
+        assert.strictEqual(this.wrapper.getFocusedItemText(), 'Folder', 'Root folder selected');
+        assert.strictEqual(this.fileManager.getCurrentDirectory().path, 'Folder', 'Current directory is root');
+        assert.strictEqual(this.fileManager.option('currentPath'), 'Folder', 'Current path is correct');
+    });
+
+    test('When current folder not found and refresh then an error rises without navigating up', function(assert) {
+        const changeableFolder = { name: 'Folder', isDirectory: 'true' };
+        this.fileManager.option('fileSystemProvider',
+            new CustomFileSystemProvider({
+                getItems: pathInfo => {
+                    if(pathInfo.path === '') {
+                        return [changeableFolder];
+                    } else if(pathInfo.path === 'Folder') {
+                        return [{ name: 'Subfolder', isDirectory: 'true' }];
+                    } else if(pathInfo.path === 'Folder/Subfolder') {
+                        return [];
+                    } else {
+                        throw new Error('Error');
+                    }
+                }
+            }));
+        this.clock.tick(400);
+
+        this.wrapper.findThumbnailsItem('Folder').trigger('dxdblclick');
+        this.clock.tick(400);
+
+        let infos = this.progressPanelWrapper.getInfos();
+        assert.strictEqual(infos.length, 0, 'No notifications');
+
+        this.wrapper.findThumbnailsItem('Subfolder').trigger('dxdblclick');
+        this.clock.tick(400);
+
+        infos = this.progressPanelWrapper.getInfos();
+        assert.strictEqual(infos.length, 0, 'No notifications');
+
+        changeableFolder.name = 'Folder1';
+        this.wrapper.getToolbarButton('Refresh').trigger('dxclick');
+        this.clock.tick(400);
+
+        infos = this.progressPanelWrapper.getInfos();
+        assert.strictEqual(infos.length, 0, 'No notifications');
+
+        assert.strictEqual(this.wrapper.getThumbnailsItems().length, 1);
+        assert.strictEqual(this.wrapper.getThumbnailsItemName(0), 'Folder1', 'The only item is shown');
+        assert.strictEqual(this.wrapper.getBreadcrumbsPath(), 'Files', 'Breadcrumbs has correct path');
+        assert.strictEqual(this.wrapper.getFocusedItemText(), 'Files', 'Root folder selected');
+        assert.strictEqual(this.fileManager.getCurrentDirectory().path, '', 'Current directory is root');
+        assert.strictEqual(this.fileManager.option('currentPath'), '', 'Current path is correct');
+    });
+
+    test('Repaint at non-root level without jQuery does not lead to js errors (T931481)', function(assert) {
+        const folderName = 'Folder 1';
+
+        assert.strictEqual(this.wrapper.getFocusedItemText(), 'Files', 'root folder is focused after init');
+
+        this.fileManager.option('currentPath', folderName);
+        this.clock.tick(400);
+
+        assert.strictEqual(this.wrapper.getFocusedItemText(), folderName, 'current folder is focused');
+
+        this.fileManager.repaint();
+        this.clock.tick(800);
+
+        assert.strictEqual(this.wrapper.getFocusedItemText(), folderName, 'current folder is still focused');
+    });
+
+    test('errorText can be customized on the getItems', function(assert) {
+        const customMessage = 'Custom error message';
         this.fileManager.option({
-            width: 500,
-            height: 250,
-            fileSystemProvider: createHugeFileSystem()
+            fileSystemProvider: new CustomFileSystemProvider({
+                getItems: () => { throw { errorId: 0, errorText: customMessage }; }
+            })
         });
         this.clock.tick(400);
 
-        const scrollPosition = 150;
-        this.wrapper.getThumbnailsViewScrollableContainer().scrollTop(scrollPosition);
-        this.clock.tick(400);
+        const info = this.progressPanelWrapper.getInfos()[0];
+        const common = info.common;
+        const details = info.details[0];
+        assert.notOk(common.hasError, 'error rendered');
+        assert.equal(common.commonText, 'The directory cannot be opened', 'common text rendered');
+        assert.notOk(common.$progressBar.length, 'progress bar not rendered');
+        assert.ok(common.closeButtonVisible, 'close button visible');
 
-        this.fileManager.refresh();
-        this.clock.tick(800);
-
-        assert.strictEqual(this.wrapper.getThumbnailsViewScrollableContainer().scrollTop(), scrollPosition, 'scroll position is the same');
-
-        renderer.fn.width = originalFunc;
+        assert.ok(details.hasError, 'error rendered');
+        assert.equal(details.errorText, customMessage, 'details error text rendered');
     });
 
-    test('All views - must keep scroll position for sync focused item', function(assert) {
-        // focus item in thumbnails and remember its scroll position
-        this.fileManager.option('fileSystemProvider', createHugeFileSystem());
+    test('currentPathKeys option has correct value with nameExpr and keyExpr (T988286)', function(assert) {
+        this.fileManager.option('fileSystemProvider', {
+            data: [
+                {
+                    title: 'Folder 1',
+                    id: 'dir-1',
+                    isDirectory: true,
+                    items: [
+                        {
+                            title: 'Folder 1.1',
+                            id: 'dir-1.1',
+                            isDirectory: true
+                        }
+                    ]
+                }
+            ],
+            nameExpr: 'title',
+            keyExpr: 'id'
+        });
         this.clock.tick(400);
 
-        this.wrapper.findThumbnailsItem('Folder 0').trigger('dxpointerdown');
-        this.clock.tick(400);
-        this.wrapper.getThumbnailsViewPort().trigger($.Event('keydown', { key: 'PageDown' }));
+        let currentPathKeys = this.fileManager.option('currentPathKeys');
+        assert.strictEqual(this.wrapper.getBreadcrumbsPath(), 'Files', 'Breadcrumbs has correct path');
+        assert.strictEqual(this.fileManager.getCurrentDirectory().key, '', 'Current directory is root');
+        assert.strictEqual(currentPathKeys.length, 0, 'Current path keys has correct size');
+
+        this.wrapper.findThumbnailsItem('Folder 1').trigger('dxdblclick');
         this.clock.tick(400);
 
-        const thumbnailsScrollPosition = this.wrapper.getThumbnailsViewScrollableContainer().scrollTop();
+        currentPathKeys = this.fileManager.option('currentPathKeys');
+        assert.strictEqual(this.wrapper.getBreadcrumbsPath(), 'Files/Folder 1', 'Breadcrumbs has correct path');
+        assert.strictEqual(this.fileManager.getCurrentDirectory().key, 'dir-1', 'Current directory is Folder 1');
+        assert.strictEqual(currentPathKeys.length, 1, 'Current path keys has correct size');
+        assert.strictEqual(currentPathKeys[0], 'dir-1', 'Current path keys are correct');
 
-        // switch to details and remember scroll position
-        this.wrapper.getToolbarDropDownButton().find(`.${Consts.BUTTON_CLASS}`).trigger('dxclick');
-        this.clock.tick(400);
-        let detailsViewSelector = this.wrapper.getToolbarViewSwitcherListItem(0);
-        $(detailsViewSelector).trigger('dxclick');
-        this.clock.tick(400);
-
-        const detailsScrollPosition = this.wrapper.getDetailsViewScrollableContainer().scrollTop();
-
-        // switch to thumbnails and check scroll position
-        this.wrapper.getToolbarDropDownButton().find(`.${Consts.BUTTON_CLASS}`).trigger('dxclick');
-        this.clock.tick(400);
-        const thumbnailsViewSelector = this.wrapper.getToolbarViewSwitcherListItem(1);
-        $(thumbnailsViewSelector).trigger('dxclick');
+        this.wrapper.findThumbnailsItem('Folder 1.1').trigger('dxdblclick');
         this.clock.tick(400);
 
-        assert.strictEqual(this.wrapper.getThumbnailsViewScrollableContainer().scrollTop(), thumbnailsScrollPosition, 'thumbnails scroll position is the same');
-
-        // switch to details and check scroll position
-        this.wrapper.getToolbarDropDownButton().find(`.${Consts.BUTTON_CLASS}`).trigger('dxclick');
-        this.clock.tick(400);
-        detailsViewSelector = this.wrapper.getToolbarViewSwitcherListItem(0);
-        $(detailsViewSelector).trigger('dxclick');
-        this.clock.tick(400);
-
-        assert.strictEqual(this.wrapper.getDetailsViewScrollableContainer().scrollTop(), detailsScrollPosition, 'details scroll position is the same');
+        currentPathKeys = this.fileManager.option('currentPathKeys');
+        assert.strictEqual(this.wrapper.getBreadcrumbsPath(), 'Files/Folder 1/Folder 1.1', 'Breadcrumbs has correct path');
+        assert.strictEqual(this.fileManager.getCurrentDirectory().key, 'dir-1.1', 'Current directory is Folder 1.1');
+        assert.strictEqual(currentPathKeys.length, 2, 'Current path keys has correct size');
+        assert.strictEqual(currentPathKeys[0], 'dir-1');
+        assert.strictEqual(currentPathKeys[1], 'dir-1.1', 'Current path keys are correct');
     });
 });

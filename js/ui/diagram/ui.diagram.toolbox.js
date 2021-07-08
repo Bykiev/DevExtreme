@@ -54,9 +54,6 @@ class DiagramToolbox extends DiagramFloatingPanel {
         }
         return position;
     }
-    _getPopupContainer() {
-        return this.isMobileView() ? super._getPopupContainer() : undefined;
-    }
     _getPopupAnimation() {
         const $parent = this.option('offsetParent');
         if(this.isMobileView()) {
@@ -234,7 +231,7 @@ class DiagramToolbox extends DiagramFloatingPanel {
             const title = $target.attr('title');
             if(title) {
                 const $tooltip = $('<div>')
-                    .html(title)
+                    .text(title)
                     .appendTo($container);
                 this._createComponent($tooltip, Tooltip, {
                     target: $target.get(0),
@@ -268,17 +265,16 @@ class DiagramToolbox extends DiagramFloatingPanel {
                 this._updateScrollAnimateSubscription(e.component);
             },
             onContentReady: (e) => {
+                for(let i = 0; i < data.length; i++) {
+                    if(data[i].expanded === false) {
+                        e.component.collapseItem(i);
+                    } else if(data[i].expanded === true) {
+                        e.component.expandItem(i);
+                    }
+                }
                 this._updateScrollAnimateSubscription(e.component);
             }
         });
-
-        for(let i = 0; i < data.length; i++) {
-            if(data[i].expanded === false) {
-                this._accordion.collapseItem(i);
-            } else if(data[i].expanded === true) {
-                this._accordion.expandItem(i);
-            }
-        }
     }
     _updateScrollAnimateSubscription(component) {
         component._deferredAnimate = new Deferred();

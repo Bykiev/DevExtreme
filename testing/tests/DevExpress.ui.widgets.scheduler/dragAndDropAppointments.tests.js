@@ -81,6 +81,8 @@ const zoomModuleConfig = {
     }
 };
 
+const DROPPABLE_CELL_CLASS = 'dx-scheduler-date-table-droppable-cell';
+
 module('Browser zoom', zoomModuleConfig, () => {
     if(!isDesktopEnvironment() || !browser.webkit) {
         return;
@@ -757,6 +759,45 @@ module('Common', commonModuleConfig, () => {
         const data = scheduler.instance.option('dataSource')[1];
         assert.ok(data.allDay, 'second appointment - allDay is true');
     });
+
+    // T938908
+    test('Appointment dragged from tooltip should have correct css', function(assert) {
+        const scheduler = createWrapper({
+            dataSource: [{
+                text: 'App 1',
+                startDate: new Date(2018, 4, 21, 9, 30),
+                endDate: new Date(2018, 4, 21, 11, 30)
+            }, {
+                text: 'App 2',
+                startDate: new Date(2018, 4, 21, 9, 30),
+                endDate: new Date(2018, 4, 21, 11, 30)
+            }],
+            height: 600,
+            views: [{ type: 'day', maxAppointmentsPerCell: 1 }],
+            currentDate: new Date(2018, 4, 21),
+            startDayHour: 9,
+            endDayHour: 16
+        });
+
+        scheduler.appointments.compact.click(0);
+
+        const appointment = scheduler.appointments.compact.getAppointment();
+        const appointmentPosition = getAbsolutePosition(appointment);
+
+        const pointer = pointerMock(appointment).start();
+
+        pointer
+            .down(appointmentPosition.left, appointmentPosition.top)
+            .move(50, 50);
+
+        const draggedAppointment = scheduler.appointments.find('App 2').parent();
+
+        assert.equal(draggedAppointment.css('z-index'), 1000, 'Correct z-index');
+        assert.equal(draggedAppointment.css('position'), 'fixed', 'Appointment has fixed position');
+        assert.equal(draggedAppointment.css('opacity'), 0.7, 'Appointment has correct opacity');
+
+        pointer.up();
+    });
 });
 
 module('appointmentDragging customization', $.extend({}, {
@@ -791,7 +832,7 @@ module('appointmentDragging customization', $.extend({}, {
                 }
             }, options));
     },
-}, commonModuleConfig, () => {
+}, commonModuleConfig), () => {
     if(!isDesktopEnvironment()) {
         return;
     }
@@ -962,6 +1003,194 @@ module('appointmentDragging customization', $.extend({}, {
         assert.strictEqual(appointmentDragging.onRemove.getCall(0).args[0].itemData.text, 'App 1', 'onRemove itemData parameter');
     });
 
+    // T895576
+    [true, false].forEach(createDraggableFirst => {
+        [true, false].forEach(allDay => {
+            const testAppointmentDraggingFromSchedulerWithScroll = (assert, that, data, pointerMove, draggablePos, schedulerPos, scrollPos) => {
+                const group = 'testGroup';
+
+                const appointmentDragging = {
+                    group,
+                    onRemove: sinon.spy(e => {
+                        e.component.deleteAppointment(e.itemData);
+                    })
+                };
+
+                const createDraggable = (top, left) => {
+                    return that.createDraggable({ group: group }).css({
+                        position: 'absolute',
+                        top: draggablePos.top,
+                        left: draggablePos.left,
+                        height: '500px',
+                        width: '200px'
+                    });
+                };
+
+                const createScheduler = () => {
+                    return createWrapper({
+                        appointmentDragging,
+                        dataSource: data,
+                        currentView: 'week',
+                        crossScrollingEnabled: true,
+                        currentDate: new Date(2017, 3, 30),
+                        height: 300,
+                        width: 300
+                    });
+                };
+
+                let draggable;
+                let scheduler;
+
+                if(createDraggableFirst) {
+                    draggable = createDraggable();
+                    scheduler = createScheduler();
+                } else {
+                    scheduler = createScheduler();
+                    draggable = createDraggable();
+                }
+
+                const instance = scheduler.instance;
+
+                scheduler.drawControl();
+                if(schedulerPos) {
+                    $(instance.element()).css({
+                        position: 'absolute',
+                        top: schedulerPos.top,
+                        left: schedulerPos.left
+                    });
+                }
+
+                if(scrollPos) {
+                    const scrollable = scheduler.workSpace.getScrollable();
+                    scrollable.scrollTo(scrollPos);
+                }
+
+                const appointment = scheduler.appointments.find('App 1');
+                const appointmentPosition = getAbsolutePosition(appointment);
+                const draggablePosition = getAbsolutePosition(draggable);
+                const dataSource = instance.option('dataSource');
+
+                const pointer = pointerMock(appointment).start();
+                const pointerMoveCoordinates = {
+                    x: pointerMove.x ? draggablePosition.left - appointmentPosition.left : 0,
+                    y: pointerMove.y ? draggablePosition.top - appointmentPosition.top : 0
+                };
+
+                pointer
+                    .down(appointmentPosition.left, appointmentPosition.top)
+                    .move(pointerMoveCoordinates.x, pointerMoveCoordinates.y)
+                    .up();
+
+                assert.strictEqual(dataSource.length, 0, 'appointment is removed');
+                assert.strictEqual(appointmentDragging.onRemove.callCount, 1, 'onRemove call count');
+                assert.strictEqual(appointmentDragging.onRemove.getCall(0).args[0].itemData.text, 'App 1', 'onRemove itemData parameter');
+            };
+
+            test(`Move appointment to Draggable when scheduler has horizontal scroll (allDay=${allDay}, createDraggableFirst=${createDraggableFirst})`, function(assert) {
+                const draggablePosition = {
+                    top: '0px',
+                    left: '400px'
+                };
+
+                const dataSource = [{
+                    text: 'App 1',
+                    startDate: new Date(2017, 3, 30),
+                    allDay
+                }];
+
+                const pointerMove = {
+                    x: true,
+                    y: false
+                };
+
+                testAppointmentDraggingFromSchedulerWithScroll(assert, this, dataSource, pointerMove, draggablePosition);
+            });
+
+            test(`Move appointment to Draggable when scheduler has horizontal scroll and it is scrolled right (allDay=${allDay}, createDraggableFirst=${createDraggableFirst})`, function(assert) {
+                const draggablePosition = {
+                    top: '0px',
+                    left: '0px'
+                };
+
+                const schedulerPos = {
+                    top: '0px',
+                    left: '200px'
+                };
+
+                const dataSource = [{
+                    text: 'App 1',
+                    startDate: new Date(2017, 4, 6, 0, 0),
+                    endDate: new Date(2017, 4, 6, 0, 30),
+                    allDay
+                }];
+
+                const pointerMove = {
+                    x: true,
+                    y: false
+                };
+
+                const scrollPos = {
+                    x: 10000,
+                    y: 0
+                };
+
+                testAppointmentDraggingFromSchedulerWithScroll(assert, this, dataSource, pointerMove, draggablePosition, schedulerPos, scrollPos);
+            });
+
+
+            test(`Move appointment to Draggable when scheduler has vertical scroll (allDay=${allDay}, createDraggableFirst=${createDraggableFirst})`, function(assert) {
+                const draggablePosition = {
+                    top: '350px',
+                    left: '0px'
+                };
+
+                const dataSource = [{
+                    text: 'App 1',
+                    startDate: new Date(2017, 3, 30),
+                    allDay
+                }];
+
+                const pointerMove = {
+                    x: true,
+                    y: true
+                };
+
+                testAppointmentDraggingFromSchedulerWithScroll(assert, this, dataSource, pointerMove, draggablePosition);
+            });
+
+            test(`Move appointment to Draggable when scheduler has vertical scroll and it is scrolled down (allDay=${allDay}, createDraggableFirst=${createDraggableFirst})`, function(assert) {
+                const draggablePosition = {
+                    top: '0px',
+                    left: '100px'
+                };
+
+                const schedulerPos = {
+                    top: '500px',
+                    left: '0px'
+                };
+
+                const dataSource = [{
+                    text: 'App 1',
+                    startDate: new Date(2017, 3, 30, 23, 0),
+                    endDate: new Date(2017, 3, 30, 23, 30),
+                    allDay
+                }];
+
+                const pointerMove = {
+                    x: true,
+                    y: true
+                };
+
+                const scrollPos = {
+                    x: 0,
+                    y: 10000
+                };
+
+                testAppointmentDraggingFromSchedulerWithScroll(assert, this, dataSource, pointerMove, draggablePosition, schedulerPos, scrollPos);
+            });
+        });
+    });
+
     test('Move appointment to Draggable from tooltip', function(assert) {
         const group = 'testGroup';
 
@@ -1031,4 +1260,106 @@ module('appointmentDragging customization', $.extend({}, {
             endDate: new Date(2018, 4, 21, 9, 30)
         }, 'added appointment data');
     });
-}));
+
+    // T885459
+    test('Move appointment to Draggable - droppable class should be removed', function(assert) {
+        const group = 'shared';
+        const scheduler = this.createScheduler({
+            views: ['month'],
+            currentView: 'month',
+            dataSource: [{
+                text: 'App 1',
+                startDate: new Date(2018, 4, 1, 9, 30),
+                endDate: new Date(2018, 4, 1, 11, 30)
+            }],
+            appointmentDragging: {
+                group: group
+            }
+        });
+        const $dragElement = this.createDraggable({ group: group });
+
+        const appointment = scheduler.appointments.find('App 1');
+        const appointmentPosition = getAbsolutePosition(appointment);
+        const draggablePosition = getAbsolutePosition($dragElement);
+        const $cellElement = $(scheduler.workSpace.getCell(0, 2));
+
+        const pointer = pointerMock(appointment).start();
+
+        pointer.down(appointmentPosition.left, appointmentPosition.top);
+        pointer.move(5, 5).move(draggablePosition.left - appointmentPosition.left - 5, draggablePosition.top - appointmentPosition.top - 5).move(5, 5);
+
+        assert.notOk($cellElement.hasClass(DROPPABLE_CELL_CLASS), 'cell has not droppable class');
+
+        pointer.up();
+
+        assert.notOk($cellElement.hasClass(DROPPABLE_CELL_CLASS), 'cell has not droppable class');
+    });
+
+    // T885459
+    test('Move item from Draggable to Scheduler and back - droppable class should be removed', function(assert) {
+        const group = 'shared';
+        const $dragElement = this.createDraggable({ group: group });
+        const scheduler = this.createScheduler({
+            views: ['month'],
+            currentView: 'month',
+            dataSource: [{
+                text: 'App 1',
+                startDate: new Date(2018, 4, 1, 9, 30),
+                endDate: new Date(2018, 4, 1, 11, 30)
+            }],
+            appointmentDragging: {
+                group: group
+            }
+        });
+
+        const appointment = scheduler.appointments.find('App 1');
+        const appointmentPosition = getAbsolutePosition(appointment);
+        const draggablePosition = getAbsolutePosition($dragElement);
+        const $cellElement = $(scheduler.workSpace.getCell(0, 2));
+
+        const pointer = pointerMock($dragElement).start();
+
+        pointer.down(draggablePosition.left, draggablePosition.top);
+        pointer
+            .move(5, 5)
+            .move(appointmentPosition.left - draggablePosition.left - 5, appointmentPosition.top - draggablePosition.top - 5)
+            .move(draggablePosition.left - appointmentPosition.left, draggablePosition.top - appointmentPosition.top)
+            .up();
+
+        assert.notOk($cellElement.hasClass(DROPPABLE_CELL_CLASS), 'cell has not droppable class');
+    });
+
+    // T885459
+    test('Move appointment outside Scheduler - droppable class should not be removed', function(assert) {
+        const group = 'shared';
+        const scheduler = this.createScheduler({
+            views: ['month'],
+            currentView: 'month',
+            dataSource: [{
+                text: 'App 1',
+                startDate: new Date(2018, 4, 1, 9, 30),
+                endDate: new Date(2018, 4, 1, 11, 30)
+            }],
+            appointmentDragging: {
+                group: group
+            }
+        });
+        const $schedulerElement = $(scheduler.instance.element());
+
+        const appointment = scheduler.appointments.find('App 1');
+        const appointmentPosition = getAbsolutePosition(appointment);
+        const schedulerPosition = getAbsolutePosition($schedulerElement);
+        const $cellElement = $(scheduler.workSpace.getCell(0, 2));
+
+        const pointer = pointerMock(appointment).start();
+
+        pointer.down(appointmentPosition.left, appointmentPosition.top);
+        pointer.move(5, 5).move(schedulerPosition - 15, schedulerPosition - 15);
+
+        assert.ok($cellElement.hasClass(DROPPABLE_CELL_CLASS), 'cell has droppable class');
+
+        pointer.up();
+
+        assert.notOk($cellElement.hasClass(DROPPABLE_CELL_CLASS), 'cell has not droppable class');
+    });
+});

@@ -577,7 +577,7 @@ export interface GridBaseOptions<T = GridBase> extends WidgetOptions<T> {
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    rowDragging?: { allowDropInsideItem?: boolean, allowReordering?: boolean, autoScroll?: boolean, boundary?: string | Element | JQuery, container?: string | Element | JQuery, cursorOffset?: string | { x?: number, y?: number }, data?: any, dragDirection?: 'both' | 'horizontal' | 'vertical', dragTemplate?: template | ((dragInfo: { itemData?: any, itemElement?: dxElement }, containerElement: dxElement) => string | Element | JQuery), dropFeedbackMode?: 'push' | 'indicate', filter?: string, group?: string, handle?: string, onAdd?: ((e: { event?: event, itemData?: any, itemElement?: dxElement, fromIndex?: number, toIndex?: number, fromComponent?: dxSortable | dxDraggable, toComponent?: dxSortable | dxDraggable, fromData?: any, toData?: any, dropInsideItem?: boolean }) => any), onDragChange?: ((e: { event?: event, cancel?: boolean, itemData?: any, itemElement?: dxElement, fromIndex?: number, toIndex?: number, fromComponent?: dxSortable | dxDraggable, toComponent?: dxSortable | dxDraggable, fromData?: any, toData?: any, dropInsideItem?: boolean }) => any), onDragEnd?: ((e: { event?: event, cancel?: boolean, itemData?: any, itemElement?: dxElement, fromIndex?: number, toIndex?: number, fromComponent?: dxSortable | dxDraggable, toComponent?: dxSortable | dxDraggable, fromData?: any, toData?: any, dropInsideItem?: boolean }) => any), onDragMove?: ((e: { event?: event, cancel?: boolean, itemData?: any, itemElement?: dxElement, fromIndex?: number, toIndex?: number, fromComponent?: dxSortable | dxDraggable, toComponent?: dxSortable | dxDraggable, fromData?: any, toData?: any, dropInsideItem?: boolean }) => any), onDragStart?: ((e: { event?: event, cancel?: boolean, itemData?: any, itemElement?: dxElement, fromIndex?: number, fromData?: any }) => any), onRemove?: ((e: { event?: event, itemData?: any, itemElement?: dxElement, fromIndex?: number, toIndex?: number, fromComponent?: dxSortable | dxDraggable, toComponent?: dxSortable | dxDraggable, fromData?: any, toData?: any }) => any), onReorder?: ((e: { event?: event, itemData?: any, itemElement?: dxElement, fromIndex?: number, toIndex?: number, fromComponent?: dxSortable | dxDraggable, toComponent?: dxSortable | dxDraggable, fromData?: any, toData?: any, dropInsideItem?: boolean }) => any), scrollSensitivity?: number, scrollSpeed?: number, showDragIcons?: boolean };
+    rowDragging?: { allowDropInsideItem?: boolean, allowReordering?: boolean, autoScroll?: boolean, boundary?: string | Element | JQuery, container?: string | Element | JQuery, cursorOffset?: string | { x?: number, y?: number }, data?: any, dragDirection?: 'both' | 'horizontal' | 'vertical', dragTemplate?: template | ((dragInfo: { itemData?: any, itemElement?: dxElement }, containerElement: dxElement) => string | Element | JQuery), dropFeedbackMode?: 'push' | 'indicate', filter?: string, group?: string, handle?: string, onAdd?: ((e: { event?: event, itemData?: any, itemElement?: dxElement, fromIndex?: number, toIndex?: number, fromComponent?: dxSortable | dxDraggable, toComponent?: dxSortable | dxDraggable, fromData?: any, toData?: any, dropInsideItem?: boolean }) => any), onDragChange?: ((e: { event?: event, cancel?: boolean, itemData?: any, itemElement?: dxElement, fromIndex?: number, toIndex?: number, fromComponent?: dxSortable | dxDraggable, toComponent?: dxSortable | dxDraggable, fromData?: any, toData?: any, dropInsideItem?: boolean }) => any), onDragEnd?: ((e: { event?: event, cancel?: boolean, itemData?: any, itemElement?: dxElement, fromIndex?: number, toIndex?: number, fromComponent?: dxSortable | dxDraggable, toComponent?: dxSortable | dxDraggable, fromData?: any, toData?: any, dropInsideItem?: boolean }) => any), onDragMove?: ((e: { event?: event, cancel?: boolean, itemData?: any, itemElement?: dxElement, fromIndex?: number, toIndex?: number, fromComponent?: dxSortable | dxDraggable, toComponent?: dxSortable | dxDraggable, fromData?: any, toData?: any, dropInsideItem?: boolean }) => any), onDragStart?: ((e: { event?: event, cancel?: boolean, itemData?: any, itemElement?: dxElement, fromIndex?: number, fromData?: any }) => any), onRemove?: ((e: { event?: event, itemData?: any, itemElement?: dxElement, fromIndex?: number, toIndex?: number, fromComponent?: dxSortable | dxDraggable, toComponent?: dxSortable | dxDraggable, fromData?: any, toData?: any }) => any), onReorder?: ((e: { event?: event, itemData?: any, itemElement?: dxElement, fromIndex?: number, toIndex?: number, fromComponent?: dxSortable | dxDraggable, toComponent?: dxSortable | dxDraggable, fromData?: any, toData?: any, dropInsideItem?: boolean, promise?: Promise<void> | JQueryPromise<void> }) => any), scrollSensitivity?: number, scrollSpeed?: number, showDragIcons?: boolean };
     /**
      * @docid GridBaseOptions.scrolling
      * @type object
@@ -906,6 +906,7 @@ export interface GridBaseScrolling {
     scrollByThumb?: boolean;
     /**
      * @docid GridBaseOptions.scrolling.showScrollbar
+     * @default 'onHover' [for](desktop)
      * @type Enums.ShowScrollbarMode
      * @default 'onScroll'
      * @prevFileNamespace DevExpress.ui
@@ -1195,7 +1196,7 @@ export interface GridBase {
     /**
      * @docid GridBaseMethods.focus
      * @publicName focus(element)
-     * @param1 element:Node|jQuery
+     * @param1 element:Element|jQuery
      * @prevFileNamespace DevExpress.ui
      * @public
      */
@@ -1251,7 +1252,7 @@ export interface GridBase {
      * @docid GridBaseMethods.getRowElement
      * @publicName getRowElement(rowIndex)
      * @param1 rowIndex:number
-     * @return Array<Node>|jQuery|undefined
+     * @return Array<Element>|jQuery|undefined
      * @prevFileNamespace DevExpress.ui
      * @public
      */
@@ -1680,13 +1681,12 @@ export interface GridBaseColumn {
     falseText?: string;
     /**
      * @docid GridBaseColumn.filterOperations
-     * @type Array<string>
-     * @acceptValues "=" | "<>" | "<" | "<=" | ">" | ">=" | "notcontains" | "contains" | "startswith" | "endswith" | "between"
+     * @type Array<Enums.GridFilterOperations, string>
      * @default undefined
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    filterOperations?: Array<'=' | '<>' | '<' | '<=' | '>' | '>=' | 'notcontains' | 'contains' | 'startswith' | 'endswith' | 'between'>;
+    filterOperations?: Array<'=' | '<>' | '<' | '<=' | '>' | '>=' | 'contains' | 'endswith' | 'isblank' | 'isnotblank' | 'notcontains' | 'startswith' | 'between' | 'anyof' | 'noneof'>;
     /**
      * @docid GridBaseColumn.filterType
      * @type Enums.FilterType
@@ -2558,7 +2558,7 @@ declare class dxDataGrid extends Widget implements GridBase {
     /**
      * @docid dxDataGridMethods.exportToExcel
      * @publicName exportToExcel(selectionOnly)
-     * @deprecated excelExporterMethods.exportDataGrid
+     * @deprecated excelExporter.exportDataGrid
      * @param1 selectionOnly:boolean
      * @prevFileNamespace DevExpress.ui
      * @public
@@ -2913,7 +2913,7 @@ export interface dxDataGridColumnButton extends GridBaseColumnButton {
      * @type_function_param2_field6 rowIndex:number
      * @type_function_param2_field7 rowType:string
      * @type_function_param2_field8 row:dxDataGridRowObject
-     * @type_function_return string|Node|jQuery
+     * @type_function_return string|Element|jQuery
      * @prevFileNamespace DevExpress.ui
      * @public
      */

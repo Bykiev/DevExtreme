@@ -1,5 +1,6 @@
 import $ from '../../core/renderer';
 import { extend } from '../../core/utils/extend';
+import { Deferred } from '../../core/utils/deferred';
 import eventsEngine from '../../events/core/events_engine';
 import { addNamespace } from '../../events/utils';
 import { name as contextMenuEventName } from '../../events/contextmenu';
@@ -44,7 +45,8 @@ class FileManagerThumbnailsItemList extends FileManagerItemListBase {
             itemThumbnailTemplate: this._getItemThumbnailContainer.bind(this),
             getTooltipText: this._getTooltipText.bind(this),
             onSelectionChanged: this._onItemListSelectionChanged.bind(this),
-            onFocusedItemChanged: this._onItemListFocusedItemChanged.bind(this)
+            onFocusedItemChanged: this._onItemListFocusedItemChanged.bind(this),
+            onContentReady: () => this._refreshDeferred?.resolve()
         });
     }
 
@@ -55,13 +57,14 @@ class FileManagerThumbnailsItemList extends FileManagerItemListBase {
         }
         let items = null;
         const targetItemElement = $(e.target).closest(this._getItemSelector());
+        let targetItem = null;
         if(targetItemElement.length > 0) {
-            const targetItem = this._itemList.getItemByItemElement(targetItemElement);
+            targetItem = this._itemList.getItemByItemElement(targetItemElement);
             this._itemList.selectItem(targetItem);
             items = this._getFileItemsForContextMenu(targetItem);
         }
 
-        this._showContextMenu(items, e.target, e);
+        this._showContextMenu(items, e.target, e, targetItem);
     }
 
     _getItemThumbnailCssClass() {
@@ -98,6 +101,14 @@ class FileManagerThumbnailsItemList extends FileManagerItemListBase {
         }
     }
 
+    _getItemsInternal() {
+        return super._getItemsInternal().then(items => {
+            const deferred = new Deferred();
+            setTimeout(() => deferred.resolve(items));
+            return deferred.promise();
+        });
+    }
+
     _disableDragging() {
         return false;
     }
@@ -108,14 +119,18 @@ class FileManagerThumbnailsItemList extends FileManagerItemListBase {
         });
     }
 
-    _onItemListSelectionChanged({ addedItems, removedItems }) {
+    _onItemListSelectionChanged({ addedItemKeys, removedItemKeys }) {
         const selectedItemInfos = this.getSelectedItems();
         const selectedItems = selectedItemInfos.map(itemInfo => itemInfo.fileItem);
         const selectedItemKeys = selectedItems.map(item => item.key);
-        const currentSelectedItemKeys = addedItems.map(itemInfo => itemInfo.fileItem.key);
-        const currentDeselectedItemKeys = removedItems.map(itemInfo => itemInfo.fileItem.key);
 
-        this._tryRaiseSelectionChanged({ selectedItemInfos, selectedItems, selectedItemKeys, currentSelectedItemKeys, currentDeselectedItemKeys });
+        this._tryRaiseSelectionChanged({
+            selectedItemInfos,
+            selectedItems,
+            selectedItemKeys,
+            currentSelectedItemKeys: addedItemKeys,
+            currentDeselectedItemKeys: removedItemKeys
+        });
     }
 
     _onItemListFocusedItemChanged({ item, itemElement }) {
@@ -124,7 +139,7 @@ class FileManagerThumbnailsItemList extends FileManagerItemListBase {
         }
 
         const fileSystemItem = item?.fileItem || null;
-        this._raiseFocusedItemChanged({
+        this._onFocusedItemChanged({
             item: fileSystemItem,
             itemKey: fileSystemItem?.key,
             itemElement: itemElement || undefined
@@ -149,6 +164,9 @@ class FileManagerThumbnailsItemList extends FileManagerItemListBase {
         }
 
         this._itemList.option(actualOptions);
+
+        this._refreshDeferred = new Deferred();
+        return this._refreshDeferred.promise();
     }
 
     _deselectItem(item) {

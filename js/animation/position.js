@@ -66,14 +66,17 @@ const window = windowUtils.getWindow();
 const domAdapter = require('../core/dom_adapter');
 const isWindow = require('../core/utils/type').isWindow;
 const extend = require('../core/utils/extend').extend;
+const getBoundingRect = require('../core/utils/position').getBoundingRect;
 const browser = require('../core/utils/browser');
 
 const translator = require('./translator');
 const support = require('../core/utils/support');
+const devices = require('../core/devices');
 
 const horzRe = /left|right/;
 const vertRe = /top|bottom/;
 const collisionRe = /fit|flip|none/;
+const scaleRe = /scale(.+)/;
 const IS_SAFARI = browser.safari;
 
 const normalizeAlign = function(raw) {
@@ -307,19 +310,27 @@ const calculatePosition = function(what, options) {
         if(isWindow(of[0])) {
             h.atLocation = of.scrollLeft();
             v.atLocation = of.scrollTop();
-            h.atSize = of[0].innerWidth >= of[0].outerWidth ? of[0].innerWidth : of.width();
-            v.atSize = of[0].innerHeight >= of[0].outerHeight || IS_SAFARI ? of[0].innerHeight : of.height();
+            if(devices.real().deviceType === 'phone' && of[0].visualViewport) {
+                h.atLocation = Math.max(h.atLocation, of[0].visualViewport.offsetLeft);
+                v.atLocation = Math.max(v.atLocation, of[0].visualViewport.offsetTop);
+                h.atSize = of[0].visualViewport.width;
+                v.atSize = of[0].visualViewport.height;
+            } else {
+                h.atSize = of[0].innerWidth > of[0].outerWidth ? of[0].innerWidth : of.width();
+                v.atSize = of[0].innerHeight > of[0].outerHeight || IS_SAFARI ? of[0].innerHeight : of.height();
+            }
         } else if(of[0].nodeType === 9) {
             h.atLocation = 0;
             v.atLocation = 0;
             h.atSize = of.width();
             v.atSize = of.height();
         } else {
-            const o = of.offset();
+            const ofRect = getBoundingRect(of.get(0));
+            const o = getOffsetWithoutScale(of);
             h.atLocation = o.left;
             v.atLocation = o.top;
-            h.atSize = of.outerWidth();
-            v.atSize = of.outerHeight();
+            h.atSize = Math.max(ofRect.width, of.outerWidth());
+            v.atSize = Math.max(ofRect.height, of.outerHeight());
         }
     }
 
@@ -393,6 +404,27 @@ const calculatePosition = function(what, options) {
     return result;
 };
 
+const getOffsetWithoutScale = function($startElement, $currentElement = $startElement) {
+    const currentElement = $currentElement.get(0);
+    if(!currentElement) {
+        return $startElement.offset();
+    }
+
+    const style = currentElement.getAttribute?.('style') || '';
+    const scale = style.match(scaleRe)?.[0];
+    let offset;
+
+    if(scale) {
+        currentElement.setAttribute('style', style.replace(scale, ''));
+        offset = getOffsetWithoutScale($startElement, $currentElement.parent());
+        currentElement.setAttribute('style', style);
+    } else {
+        offset = getOffsetWithoutScale($startElement, $currentElement.parent());
+    }
+
+    return offset;
+};
+
 const position = function(what, options) {
     const $what = $(what);
 
@@ -402,7 +434,8 @@ const position = function(what, options) {
 
     translator.resetPosition($what, true);
 
-    const offset = $what.offset();
+
+    const offset = getOffsetWithoutScale($what);
     const targetPosition = (options.h && options.v) ? options : calculatePosition($what, options);
 
     const preciser = function(number) {

@@ -29,6 +29,7 @@ class DiagramToolbar extends DiagramPanel {
         this._valueConverters = {};
         this.bar = new DiagramToolbarBar(this);
 
+        this._createOnInternalCommand();
         this._createOnCustomCommand();
         this._createOnSubMenuVisibilityChangingAction();
 
@@ -137,7 +138,10 @@ class DiagramToolbar extends DiagramPanel {
             options: {
                 dataSource: items,
                 displayExpr: displayExpr || 'text',
-                valueExpr: valueExpr || 'value'
+                valueExpr: valueExpr || 'value',
+                dropDownOptions: {
+                    container: this.option('container')
+                }
             }
         });
 
@@ -210,6 +214,9 @@ class DiagramToolbar extends DiagramPanel {
         }
         options = extend(true, options, {
             options: {
+                dropDownOptions: {
+                    container: this.option('container')
+                },
                 onOpened: () => {
                     if(this.option('isMobileView')) {
                         $('body').addClass(DIAGRAM_MOBILE_TOOLBAR_COLOR_BOX_OPENED_CLASS);
@@ -239,7 +246,7 @@ class DiagramToolbar extends DiagramPanel {
                     options: {
                         onValueChanged: (e) => {
                             const parameter = DiagramMenuHelper.getItemCommandParameter(this, item, e.component.option('value'));
-                            handler.call(this, item.command, parameter);
+                            handler.call(this, item.command, item.name, parameter);
                         }
                     }
                 };
@@ -251,7 +258,7 @@ class DiagramToolbar extends DiagramPanel {
                         onClick: (e) => {
                             if(!item.items) {
                                 const parameter = DiagramMenuHelper.getItemCommandParameter(this, item);
-                                handler.call(this, item.command, parameter);
+                                handler.call(this, item.command, item.name, parameter);
                             } else {
                                 const contextMenu = e.component._contextMenu;
                                 if(contextMenu) {
@@ -337,8 +344,8 @@ class DiagramToolbar extends DiagramPanel {
         this._contextMenuList.splice(this._contextMenuList.indexOf(widget), 1);
         delete this._commandContextMenus[item.command];
     }
-    _executeCommand(command, value) {
-        if(this._updateLocked || command === undefined) return;
+    _executeCommand(command, name, value) {
+        if(this._updateLocked) return;
 
         if(typeof command === 'number') {
             const valueConverter = this._valueConverters[command];
@@ -346,10 +353,15 @@ class DiagramToolbar extends DiagramPanel {
                 value = valueConverter.getCommandValue(value);
             }
             this.bar.raiseBarCommandExecuted(command, value);
+        } else if(typeof command === 'string') {
+            this._onInternalCommandAction({ command });
         }
-        if(typeof command === 'string') {
-            this._onCustomCommandAction({ command });
+        if(name !== undefined) {
+            this._onCustomCommandAction({ name });
         }
+    }
+    _createOnInternalCommand() {
+        this._onInternalCommandAction = this._createActionByOption('onInternalCommand');
     }
     _createOnCustomCommand() {
         this._onCustomCommandAction = this._createActionByOption('onCustomCommand');
@@ -415,9 +427,13 @@ class DiagramToolbar extends DiagramPanel {
             case 'onSubMenuVisibilityChanging':
                 this._createOnSubMenuVisibilityChangingAction();
                 break;
+            case 'onInternalCommand':
+                this._createOnInternalCommand();
+                break;
             case 'onCustomCommand':
                 this._createOnCustomCommand();
                 break;
+            case 'container':
             case 'commands':
                 this._invalidate();
                 break;

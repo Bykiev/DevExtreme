@@ -49,13 +49,13 @@ const ListEdit = ListBase.inherit({
         };
 
         const enter = function(e) {
-            if(!this._editProvider.handleEnterPressing()) {
+            if(!this._editProvider.handleEnterPressing(e)) {
                 parent.enter.apply(this, arguments);
             }
         };
 
         const space = function(e) {
-            if(!this._editProvider.handleEnterPressing()) {
+            if(!this._editProvider.handleEnterPressing(e)) {
                 parent.space.apply(this, arguments);
             }
         };
@@ -94,6 +94,15 @@ const ListEdit = ListBase.inherit({
         extend(this._deprecatedOptions, {
             allowItemReordering: { since: '19.2', alias: 'itemDragging.allowReordering' }
         });
+    },
+
+    _isItemStrictEquals: function(item1, item2) {
+        const privateKey = item1 && item1.__dx_key__;
+        if(privateKey && !this.key() && this._selection.isItemSelected(privateKey)) {
+            return false;
+        }
+
+        return this.callBase(item1, item2);
     },
 
     _getDefaultOptions() {
@@ -227,7 +236,7 @@ const ListEdit = ListBase.inherit({
         if(handledByEditProvider) {
             return;
         }
-
+        this._saveSelectionChangeEvent(e);
         this.callBase(...arguments);
     },
 
@@ -248,6 +257,15 @@ const ListEdit = ListBase.inherit({
         }
 
         this.callBase(...arguments);
+    },
+
+    _getItemContainer: function(changeData) {
+        if(this.option('grouped')) {
+            const groupIndex = this._editStrategy.getIndexByItemData(changeData)?.group;
+            return this._getGroupContainerByIndex(groupIndex);
+        } else {
+            return this.callBase(changeData);
+        }
     },
 
     _itemContextMenuHandler(e) {
@@ -328,7 +346,7 @@ const ListEdit = ListBase.inherit({
     /**
     * @name dxListMethods.getFlatIndexByItemElement
     * @publicName getFlatIndexByItemElement(itemElement)
-    * @param1 itemElement:Node
+    * @param1 itemElement:Element
     * @return object
     * @hidden
     */
@@ -340,7 +358,7 @@ const ListEdit = ListBase.inherit({
     * @name dxListMethods.getItemElementByFlatIndex
     * @publicName getItemElementByFlatIndex(flatIndex)
     * @param1 flatIndex:Number
-    * @return Node
+    * @return Element
     * @hidden
     */
     getItemElementByFlatIndex(flatIndex) {

@@ -1,5 +1,5 @@
 import {
-    dxElement
+    dxElement, dxSVGElement
 } from '../core/element';
 
 import {
@@ -54,13 +54,13 @@ export interface dxDiagramOptions extends WidgetOptions<dxDiagram> {
     /**
      * @docid dxDiagramOptions.customShapeTemplate
      * @type template|function
-     * @type_function_param1 container:dxElement
+     * @type_function_param1 container:dxSVGElement
      * @type_function_param2 data:object
      * @type_function_param2_field1 item:dxDiagramShape
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    customShapeTemplate?: template | ((container: dxElement, data: { item?: dxDiagramShape }) => any);
+    customShapeTemplate?: template | ((container: dxSVGElement, data: { item?: dxDiagramShape }) => any);
     /**
      * @docid dxDiagramOptions.customShapes
      * @type Array<Object>
@@ -68,7 +68,7 @@ export interface dxDiagramOptions extends WidgetOptions<dxDiagram> {
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    customShapes?: Array<{ allowEditImage?: boolean, allowEditText?: boolean, allowResize?: boolean, backgroundImageHeight?: number, backgroundImageLeft?: number, backgroundImageTop?: number, backgroundImageUrl?: string, backgroundImageToolboxUrl?: string, backgroundImageWidth?: number, baseType?: 'text' | 'rectangle' | 'ellipse' | 'cross' | 'triangle' | 'diamond' | 'heart' | 'pentagon' | 'octagon' | 'star' | 'arrowLeft' | 'arrowTop' | 'arrowRight' | 'arrowBottom' | 'arrowNorthSouth' | 'arrowEastWest' | 'process' | 'decision' | 'terminator' | 'predefinedProcess' | 'document' | 'multipleDocuments' | 'manualInput' | 'preparation' | 'data' | 'database' | 'hardDisk' | 'internalStorage' | 'paperTape' | 'manualOperation' | 'delay' | 'storedData' | 'display' | 'merge' | 'connector' | 'or' | 'summingJunction' | 'verticalContainer' | 'horizontalContainer' | 'cardWithImageOnLeft' | 'cardWithImageOnTop' | 'cardWithImageOnRight' | string, category?: string, connectionPoints?: Array<{ x?: number, y?: number }>, defaultHeight?: number, defaultImageUrl?: string, defaultText?: string, defaultWidth?: number, imageHeight?: number, imageLeft?: number, imageTop?: number, imageWidth?: number, maxHeight?: number, maxWidth?: number, minHeight?: number, minWidth?: number, template?: template | ((container: dxElement, data: { item?: dxDiagramShape }) => any), templateHeight?: number, templateLeft?: number, templateTop?: number, templateWidth?: number, textHeight?: number, textLeft?: number, textTop?: number, textWidth?: number, title?: string, type?: string }>;
+    customShapes?: Array<{ allowEditImage?: boolean, allowEditText?: boolean, allowResize?: boolean, backgroundImageHeight?: number, backgroundImageLeft?: number, backgroundImageTop?: number, backgroundImageUrl?: string, backgroundImageToolboxUrl?: string, backgroundImageWidth?: number, baseType?: 'text' | 'rectangle' | 'ellipse' | 'cross' | 'triangle' | 'diamond' | 'heart' | 'pentagon' | 'octagon' | 'star' | 'arrowLeft' | 'arrowTop' | 'arrowRight' | 'arrowBottom' | 'arrowNorthSouth' | 'arrowEastWest' | 'process' | 'decision' | 'terminator' | 'predefinedProcess' | 'document' | 'multipleDocuments' | 'manualInput' | 'preparation' | 'data' | 'database' | 'hardDisk' | 'internalStorage' | 'paperTape' | 'manualOperation' | 'delay' | 'storedData' | 'display' | 'merge' | 'connector' | 'or' | 'summingJunction' | 'verticalContainer' | 'horizontalContainer' | 'cardWithImageOnLeft' | 'cardWithImageOnTop' | 'cardWithImageOnRight' | string, category?: string, connectionPoints?: Array<{ x?: number, y?: number }>, defaultHeight?: number, defaultImageUrl?: string, defaultText?: string, defaultWidth?: number, imageHeight?: number, imageLeft?: number, imageTop?: number, imageWidth?: number, maxHeight?: number, maxWidth?: number, minHeight?: number, minWidth?: number, template?: template | ((container: dxSVGElement, data: { item?: dxDiagramShape }) => any), templateHeight?: number, templateLeft?: number, templateTop?: number, templateWidth?: number, textHeight?: number, textLeft?: number, textTop?: number, textWidth?: number, title?: string, type?: string }>;
     /**
      * @docid dxDiagramOptions.defaultItemProperties
      * @type Object
@@ -114,7 +114,7 @@ export interface dxDiagramOptions extends WidgetOptions<dxDiagram> {
      * @prevFileNamespace DevExpress.ui
      * @public
      */
-    nodes?: { autoLayout?: 'off' | 'tree' | 'layered' | { orientation?: 'auto' | 'vertical' | 'horizontal', type?: 'off' | 'tree' | 'layered' }, containerChildrenExpr?: string | ((data: any) => any), containerKeyExpr?: string | ((data: any) => any), dataSource?: Array<any> | DataSource | DataSourceOptions, heightExpr?: string | ((data: any) => any), imageUrlExpr?: string | ((data: any) => any), itemsExpr?: string | ((data: any) => any), keyExpr?: string | ((data: any) => any), leftExpr?: string | ((data: any) => any), lockedExpr?: string | ((data: any) => any), parentKeyExpr?: string | ((data: any) => any), styleExpr?: string | ((data: any) => any), textExpr?: string | ((data: any) => any), textStyleExpr?: string | ((data: any) => any), topExpr?: string | ((data: any) => any), typeExpr?: string | ((data: any) => any), widthExpr?: string | ((data: any) => any), zIndexExpr?: string | ((data: any) => any) };
+    nodes?: { autoLayout?: 'off' | 'tree' | 'layered' | { orientation?: 'vertical' | 'horizontal', type?: 'off' | 'tree' | 'layered' }, containerChildrenExpr?: string | ((data: any) => any), containerKeyExpr?: string | ((data: any) => any), dataSource?: Array<any> | DataSource | DataSourceOptions, heightExpr?: string | ((data: any) => any), imageUrlExpr?: string | ((data: any) => any), itemsExpr?: string | ((data: any) => any), keyExpr?: string | ((data: any) => any), leftExpr?: string | ((data: any) => any), lockedExpr?: string | ((data: any) => any), parentKeyExpr?: string | ((data: any) => any), styleExpr?: string | ((data: any) => any), textExpr?: string | ((data: any) => any), textStyleExpr?: string | ((data: any) => any), topExpr?: string | ((data: any) => any), typeExpr?: string | ((data: any) => any), widthExpr?: string | ((data: any) => any), zIndexExpr?: string | ((data: any) => any) };
     /**
      * @docid dxDiagramOptions.hasChanges
      * @type Boolean
@@ -288,6 +288,22 @@ export default class dxDiagram extends Widget {
     constructor(element: Element, options?: dxDiagramOptions)
     constructor(element: JQuery, options?: dxDiagramOptions)
     /**
+     * @docid dxDiagramMethods.getNodeDataSource
+     * @publicName getNodeDataSource()
+     * @return DataSource
+     * @prevFileNamespace DevExpress.ui
+     * @public
+     */
+    getNodeDataSource(): DataSource;
+    /**
+     * @docid dxDiagramMethods.getEdgeDataSource
+     * @publicName getEdgeDataSource()
+     * @return DataSource
+     * @prevFileNamespace DevExpress.ui
+     * @public
+     */
+    getEdgeDataSource(): DataSource;
+    /**
      * @docid dxDiagramMethods.export
      * @publicName export()
      * @return string
@@ -383,7 +399,7 @@ export interface dxDiagramShape extends dxDiagramItem {
 export interface dxDiagramCustomCommand {
     /**
      * @docid dxDiagramCustomCommand.name
-     * @type String
+     * @type String|Enums.DiagramCommand
      * @prevFileNamespace DevExpress.ui
      * @public
      */

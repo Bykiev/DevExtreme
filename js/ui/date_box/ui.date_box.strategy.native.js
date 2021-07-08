@@ -1,17 +1,21 @@
-const noop = require('../../core/utils/common').noop;
-const DateBoxStrategy = require('./ui.date_box.strategy');
-const support = require('../../core/utils/support');
-const inArray = require('../../core/utils/array').inArray;
-const dateUtils = require('./ui.date_utils');
-const dateSerialization = require('../../core/utils/date_serialization');
+import { noop } from '../../core/utils/common';
+import DateBoxStrategy from './ui.date_box.strategy';
+import { inputType } from '../../core/utils/support';
+import { inArray } from '../../core/utils/array';
+import dateUtils from './ui.date_utils';
+import dateSerialization from '../../core/utils/date_serialization';
+import { extend } from '../../core/utils/extend';
+import devices from '../../core/devices';
 
 const NativeStrategy = DateBoxStrategy.inherit({
 
     NAME: 'Native',
 
-    popupConfig: noop,
+    popupConfig: function(popupConfig) {
+        return extend({}, popupConfig, { width: 'auto' });
+    },
 
-    getParsedText: function(text) {
+    getParsedText: function(text, format) {
         if(!text) {
             return null;
         }
@@ -21,7 +25,16 @@ const NativeStrategy = DateBoxStrategy.inherit({
             return new Date(text.replace(/-/g, '/').replace('T', ' ').split('.')[0]);
         }
 
-        return dateUtils.fromStandardDateFormat(text);
+        if(this._isTextInput()) {
+            return this.callBase(text, format);
+        } else {
+            return dateUtils.fromStandardDateFormat(text);
+        }
+    },
+
+    // IE11 fallback (T902036)
+    _isTextInput: function() {
+        return this.dateBox._input().prop('type') === 'text';
     },
 
     renderPopupContent: noop,
@@ -35,7 +48,7 @@ const NativeStrategy = DateBoxStrategy.inherit({
 
         if(inArray(type, dateUtils.SUPPORTED_FORMATS) === -1) {
             type = 'date';
-        } else if(type === 'datetime' && !support.inputType(type)) {
+        } else if(type === 'datetime' && !inputType(type)) {
             type = 'datetime-local';
         }
 
@@ -44,7 +57,7 @@ const NativeStrategy = DateBoxStrategy.inherit({
 
     customizeButtons: function() {
         const dropDownButton = this.dateBox.getButton('dropDown');
-        if(dropDownButton) {
+        if(devices.real().android && dropDownButton) {
             dropDownButton.on('click', function() {
                 this.dateBox._input().get(0).click();
             }.bind(this));

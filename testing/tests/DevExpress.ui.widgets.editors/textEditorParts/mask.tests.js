@@ -1,6 +1,6 @@
 import $ from 'jquery';
-import devices from 'core/devices';
 import browser from 'core/utils/browser';
+import { isInputEventsL2Supported } from 'ui/text_box/utils.support';
 import keyboardMock from '../../../helpers/keyboardMock.js';
 import caretWorkaround from './caretWorkaround.js';
 
@@ -488,6 +488,22 @@ QUnit.module('typing', moduleConfig, () => {
         } finally {
             clock.restore();
         }
+    });
+
+    QUnit.test('"valueChanged" and "input" events should handle correctly when "valueChangeEvent" is "input"', function(assert) {
+        assert.expect(2);
+
+        $('#texteditor').dxTextEditor({
+            onInput: () => assert.ok(true, '"input" event triggered'),
+            onValueChanged: ({ value }) => assert.strictEqual(value, '1', 'value applies to the editor'),
+            valueChangeEvent: 'input',
+            mask: '9'
+        });
+
+        const $input = $('#texteditor .dx-texteditor-input');
+        const keyboard = keyboardMock($input, true);
+        caretWorkaround($input);
+        keyboard.type('1');
     });
 });
 
@@ -2124,34 +2140,49 @@ QUnit.module('Hidden input', {}, () => {
         const $hiddenInput = $textEditor.find('input[type=hidden]');
         assert.equal($hiddenInput.attr('name'), 'Editor with mask', 'name of hidden input');
     });
+
+    [
+        { useMaskedValue: true, value: '12-34-' },
+        { useMaskedValue: false, value: '1234' }
+    ].forEach(({ useMaskedValue, value }) => {
+        QUnit.test(`initial value of the hidden editor should correctly reflect actual value, useMaskedValue=${useMaskedValue}`, function(assert) {
+            const $textEditor = $('#texteditor').dxTextEditor({
+                mask: '00-00-00',
+                useMaskedValue,
+                value
+            });
+
+            const $hiddenInput = $textEditor.find('input[type=hidden]');
+            assert.strictEqual($hiddenInput.val(), value, 'submitted value should be equal to the actual value');
+        });
+
+        QUnit.testInActiveWindow(`value of the hidden editor should correctly reflect updated value, useMaskedValue=${useMaskedValue}`, function(assert) {
+            const $textEditor = $('#texteditor').dxTextEditor({
+                mask: '00-00-00',
+                useMaskedValue,
+                value
+            });
+            const instance = $textEditor.dxTextEditor('instance');
+
+            const $input = $textEditor.find('.dx-texteditor-input');
+            keyboardMock($input, true)
+                .caret(6)
+                .type('5')
+                .change();
+
+            const $hiddenInput = $textEditor.find('input[type=hidden]');
+            assert.strictEqual($hiddenInput.val(), instance.option('value'), 'submitted value should be equal to the actual value');
+        });
+    });
 });
 
 QUnit.module('Strategies', () => {
-    QUnit.test('default strategy should be used for all devices, except android 5+', function(assert) {
+    QUnit.test('inputEvents strategy should be used for browser supports Input Events Level 2', function(assert) {
         const instance = $('#texteditor').dxTextEditor({
             mask: '0'
         }).dxTextEditor('instance');
-
-        const { android, version } = devices.real();
-        const isModernAndroidDevice = android && version[0] >= 5;
-        const expectedMaskStrategy = isModernAndroidDevice ? 'android' : 'default';
+        const expectedMaskStrategy = isInputEventsL2Supported() ? 'inputEvents' : 'default';
 
         assert.strictEqual(instance._maskStrategy.NAME, expectedMaskStrategy, 'strategy name is correct');
-    });
-
-    QUnit.test('default strategy should be used for devices with android less than v5', function(assert) {
-        const currentDevice = devices.real();
-
-        devices.real({
-            platform: 'android',
-            version: [4, 4, 1]
-        });
-
-        const instance = $('#texteditor').dxTextEditor({
-            mask: '0'
-        }).dxTextEditor('instance');
-
-        assert.strictEqual(instance._maskStrategy.NAME, 'default', 'strategy name is correct');
-        devices.real(currentDevice);
     });
 });

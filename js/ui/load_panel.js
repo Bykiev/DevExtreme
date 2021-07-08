@@ -48,6 +48,8 @@ const LoadPanel = Overlay.inherit({
 
             delay: 0,
 
+            templatesRenderAsynchronously: false,
+
             hideTopOverlayHandler: null,
 
             /**
@@ -108,11 +110,6 @@ const LoadPanel = Overlay.inherit({
 
     _init: function() {
         this.callBase.apply(this, arguments);
-    },
-
-    _initOptions: function() {
-        this.callBase.apply(this, arguments);
-        this.option('templatesRenderAsynchronously', false);
     },
 
     _render: function() {
@@ -186,8 +183,11 @@ const LoadPanel = Overlay.inherit({
             return;
         }
 
-        this._$indicator = $('<div>').addClass(LOADPANEL_INDICATOR_CLASS)
-            .appendTo(this._$contentWrapper);
+        if(!this._$indicator) {
+            this._$indicator = $('<div>')
+                .addClass(LOADPANEL_INDICATOR_CLASS)
+                .appendTo(this._$contentWrapper);
+        }
 
         this._createComponent(this._$indicator, LoadIndicator, {
             indicatorSrc: this.option('indicatorSrc')
@@ -197,6 +197,7 @@ const LoadPanel = Overlay.inherit({
     _cleanPreviousContent: function() {
         this.$content().find('.' + LOADPANEL_MESSAGE_CLASS).remove();
         this.$content().find('.' + LOADPANEL_INDICATOR_CLASS).remove();
+        delete this._$indicator;
     },
 
     _togglePaneVisible: function() {
@@ -217,11 +218,7 @@ const LoadPanel = Overlay.inherit({
                 this._togglePaneVisible();
                 break;
             case 'indicatorSrc':
-                if(this._$indicator) {
-                    this._createComponent(this._$indicator, LoadIndicator, {
-                        indicatorSrc: this.option('indicatorSrc')
-                    });
-                }
+                this._renderLoadIndicator();
                 break;
             default:
                 this.callBase(args);

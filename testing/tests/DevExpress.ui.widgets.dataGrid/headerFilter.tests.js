@@ -248,6 +248,18 @@ QUnit.module('Header Filter dataController', {
         // assert
         assert.deepEqual(items, [{ text: 'test1', value: 1 }, { text: 'test2', value: 2 }]);
     });
+
+    // T891627
+    QUnit.test('Filter should be correct when first column with caption = "!" and second column with filterType = "exclude"', function(assert) {
+        // arrange, act
+        this.setupDataGrid({
+            columns: [{ dataField: 'field1', caption: '!' }, { dataField: 'field2', filterType: 'exclude', filterValues: ['test'] }],
+            dataSource: []
+        });
+
+        // assert
+        assert.deepEqual(this.getCombinedFilter(), ['!', [this.columnOption('field2').selector, '=', 'test']], 'combined filter');
+    });
 });
 
 QUnit.module('Header Filter', {
@@ -4046,6 +4058,74 @@ QUnit.module('Header Filter with real columnsController', {
 
         // assert
         assert.deepEqual(spy.getCall(0).args[0].filter, ['date', '=', '2018/01/01']);
+    });
+
+    // T938460
+    QUnit.test('The selection should work correctly after searching when calculateDisplayValue is used and when a lookup\'s key is specified', function(assert) {
+        // arrange
+        const $testElement = $('#container');
+
+        this.options = {
+            dataSource: [{ 'Test': '123' }, { 'Test': '132' }],
+            headerFilter: {
+                visible: true,
+                allowSearch: true,
+                texts: {
+                    ok: 'Ok',
+                    cancel: 'Cancel',
+                    emptyValue: '(Blanks)'
+                }
+            },
+            showColumnHeaders: true,
+            columns: [{
+                dataField: 'Test',
+                allowHeaderFiltering: true,
+                lookup: {
+                    dataSource: function() {
+                        const store = new ArrayStore({
+                            key: 'id',
+                            data: [{
+                                'id': '123',
+                                'name': '123'
+                            }, {
+                                'id': '132',
+                                'name': '132'
+                            }]
+                        });
+
+                        return {
+                            sort: 'name',
+                            searchOperation: 'startswith',
+                            store: store
+                        };
+                    },
+                    valueExpr: 'id',
+                    displayExpr: 'name',
+                    searchEnabled: true
+                },
+                calculateDisplayValue: 'Test'
+            }]
+        };
+        this.setupDataGrid();
+        this.columnHeadersView.render($testElement);
+        this.headerFilterView.render($testElement);
+
+        // assert
+        assert.equal($testElement.find('.dx-header-filter-menu').length, 1, 'has header filter menu');
+
+        // arrange
+        this.headerFilterController.showHeaderFilterMenu(0);
+        const $popupContent = this.headerFilterView.getPopupContainer().$content();
+
+        // assert
+        assert.ok($popupContent.is(':visible'), 'visible popup');
+
+        // act
+        const list = $popupContent.find('.dx-list').dxList('instance');
+        list.option('searchValue', '1');
+
+        // assert
+        assert.strictEqual(list.option('selectedItems').length, 0, 'no selected items');
     });
 });
 

@@ -4,6 +4,7 @@ import commonUtils from '../../core/utils/common';
 import windowUtils from '../../core/utils/window';
 import { each } from '../../core/utils/iterator';
 import typeUtils from '../../core/utils/type';
+import { getBoundingRect } from '../../core/utils/position';
 import gridCoreUtils from './ui.grid_core.utils';
 import messageLocalization from '../../localization/message';
 import { when, Deferred } from '../../core/utils/deferred';
@@ -130,13 +131,25 @@ const ResizingController = modules.ViewController.inherit({
     },
 
     _getBestFitWidths: function() {
+        const rowsView = this._rowsView;
+        const columnHeadersView = this._columnHeadersView;
+
         if(!this.option('legacyRendering')) {
-            return this._rowsView.getColumnWidths();
+            let widths = rowsView.getColumnWidths();
+
+            if(!widths?.length) {
+                const headersTableElement = columnHeadersView.getTableElement();
+                columnHeadersView.setTableElement(rowsView.getTableElement()?.children('.dx-header'));
+                widths = columnHeadersView.getColumnWidths();
+                columnHeadersView.setTableElement(headersTableElement);
+            }
+
+            return widths;
         }
 
-        const rowsColumnWidths = this._rowsView.getColumnWidths();
-        const headerColumnWidths = this._columnHeadersView && this._columnHeadersView.getColumnWidths();
-        const footerColumnWidths = this._footerView && this._footerView.getColumnWidths();
+        const rowsColumnWidths = rowsView.getColumnWidths();
+        const headerColumnWidths = columnHeadersView?.getColumnWidths();
+        const footerColumnWidths = this._footerView?.getColumnWidths();
 
         let resultWidths = mergeArraysByMaxValue(rowsColumnWidths, headerColumnWidths);
         resultWidths = mergeArraysByMaxValue(resultWidths, footerColumnWidths);
@@ -182,7 +195,7 @@ const ResizingController = modules.ViewController.inherit({
         const that = this;
 
         if(!that.option('legacyRendering')) {
-            const $rowsTable = that._rowsView._getTableElement();
+            const $rowsTable = that._rowsView.getTableElement();
             const $rowsFixedTable = that._rowsView.getTableElements().eq(1);
 
             if(!$rowsTable) return;
@@ -291,7 +304,7 @@ const ResizingController = modules.ViewController.inherit({
                 that._toggleBestFitMode(false);
                 resetBestFitMode = false;
                 if(focusedElement && focusedElement !== domAdapter.getActiveElement()) {
-                    const isFocusOutsideWindow = focusedElement.getBoundingClientRect().bottom < 0;
+                    const isFocusOutsideWindow = getBoundingRect(focusedElement).bottom < 0;
                     if(!isFocusOutsideWindow) {
                         if(browser.msie) {
                             setTimeout(function() { restoreFocus(focusedElement, selectionRange); });
@@ -362,7 +375,12 @@ const ResizingController = modules.ViewController.inherit({
                     }
                 }
             }
-            if(minWidth && that._getRealColumnWidth(width) < minWidth && !isHiddenColumn) {
+
+            const realColumnWidth = that._getRealColumnWidth(index, resultWidths.map(function(columnWidth, columnIndex) {
+                return index === columnIndex ? width : columnWidth;
+            }));
+
+            if(minWidth && !isHiddenColumn && realColumnWidth < minWidth) {
                 resultWidths[index] = minWidth;
                 isColumnWidthsCorrected = true;
                 i = -1;
@@ -437,14 +455,39 @@ const ResizingController = modules.ViewController.inherit({
         }
     },
 
-    _getRealColumnWidth: function(width, groupWidth) {
+    _getRealColumnWidth: function(columnIndex, columnWidths, groupWidth) {
+        let ratio = 1;
+        const width = columnWidths[columnIndex];
+
         if(!isPercentWidth(width)) {
             return parseFloat(width);
         }
 
+        const percentTotalWidth = columnWidths.reduce((sum, width, index) => {
+            if(!isPercentWidth(width)) {
+                return sum;
+            }
+
+            return sum + parseFloat(width);
+        }, 0);
+        const pixelTotalWidth = columnWidths.reduce((sum, width) => {
+            if(!width || width === HIDDEN_COLUMNS_WIDTH || isPercentWidth(width)) {
+                return sum;
+            }
+
+            return sum + parseFloat(width);
+        }, 0);
+
         groupWidth = groupWidth || this._rowsView.contentWidth();
 
-        return parseFloat(width) * groupWidth / 100;
+        const freeSpace = groupWidth - pixelTotalWidth;
+        const percentTotalWidthInPixel = percentTotalWidth * groupWidth / 100;
+
+        if(pixelTotalWidth > 0 && (percentTotalWidthInPixel + pixelTotalWidth) >= groupWidth) {
+            ratio = percentTotalWidthInPixel > freeSpace ? freeSpace / percentTotalWidthInPixel : 1;
+        }
+
+        return parseFloat(width) * groupWidth * ratio / 100;
     },
 
     _getTotalWidth: function(widths, groupWidth) {
@@ -453,11 +496,11 @@ const ResizingController = modules.ViewController.inherit({
         for(let i = 0; i < widths.length; i++) {
             const width = widths[i];
             if(width && width !== HIDDEN_COLUMNS_WIDTH) {
-                result += this._getRealColumnWidth(width, groupWidth);
+                result += this._getRealColumnWidth(i, widths, groupWidth);
             }
         }
 
-        return result;
+        return Math.ceil(result);
     },
 
     updateSize: function($rootElement) {

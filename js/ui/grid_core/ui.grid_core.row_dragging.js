@@ -2,6 +2,7 @@ import $ from '../../core/renderer';
 import { extend } from '../../core/utils/extend';
 import Sortable from '../sortable';
 import { setEmptyText } from './ui.grid_core.utils';
+import browser from '../../core/utils/browser';
 
 const COMMAND_HANDLE_CLASS = 'dx-command-drag';
 const CELL_FOCUS_DISABLED_CLASS = 'dx-cell-focus-disabled';
@@ -42,33 +43,60 @@ const RowDraggingExtender = {
     },
 
     _renderContent: function() {
-        const that = this;
         const rowDragging = this.option('rowDragging');
         const allowReordering = this._allowReordering();
-        const $content = that.callBase.apply(that, arguments);
+        const $content = this.callBase.apply(this, arguments);
+        const isFixedTableRendering = this._isFixedTableRendering;
+        const sortableName = '_sortable';
+        const sortableFixedName = '_sortableFixed';
+        const currentSortableName = isFixedTableRendering ? sortableFixedName : sortableName;
+        const anotherSortableName = isFixedTableRendering ? sortableName : sortableFixedName;
+        const togglePointerEventsStyle = (toggle) => {
+            // T929503
+            this[sortableFixedName]?.$element().css('pointerEvents', toggle ? 'auto' : '');
+        };
 
-        if(allowReordering && $content.length) {
-            that._sortable = that._createComponent($content, Sortable, extend({
-                component: that.component,
+        if((allowReordering || this[currentSortableName]) && $content.length) {
+            this[currentSortableName] = this._createComponent($content, Sortable, extend({
+                component: this.component,
                 contentTemplate: null,
                 filter: '> table > tbody > .dx-row:not(.dx-freespace-row):not(.dx-virtual-row)',
-                dragTemplate: that._getDraggableRowTemplate(),
+                dragTemplate: this._getDraggableRowTemplate(),
                 handle: rowDragging.showDragIcons && `.${COMMAND_HANDLE_CLASS}`,
                 dropFeedbackMode: 'indicate'
             }, rowDragging, {
-                onDragStart: function(e) {
+                onDragStart: (e) => {
                     const row = e.component.getVisibleRows()[e.fromIndex];
                     e.itemData = row && row.data;
 
                     const isDataRow = row && row.rowType === 'data';
-                    e.cancel = !isDataRow;
 
-                    const onDragStart = rowDragging.onDragStart;
-                    onDragStart && onDragStart(e);
+                    e.cancel = !allowReordering || !isDataRow;
+
+                    rowDragging.onDragStart?.(e);
+                },
+                onDragEnter: () => {
+                    togglePointerEventsStyle(true);
+                },
+                onDragLeave: () => {
+                    togglePointerEventsStyle(false);
+                },
+                onDragEnd: (e) => {
+                    togglePointerEventsStyle(false);
+                    rowDragging.onDragEnd?.(e);
+                },
+                dropFeedbackMode: browser.msie ? 'indicate' : rowDragging.dropFeedbackMode,
+                onOptionChanged: (e) => {
+                    const hasFixedSortable = this[sortableFixedName];
+                    if(hasFixedSortable) {
+                        if(e.name === 'fromIndex' || e.name === 'toIndex') {
+                            this[anotherSortableName].option(e.name, e.value);
+                        }
+                    }
                 }
             }));
 
-            $content.toggleClass(SORTABLE_WITHOUT_HANDLE_CLASS, !rowDragging.showDragIcons);
+            $content.toggleClass(SORTABLE_WITHOUT_HANDLE_CLASS, allowReordering && !rowDragging.showDragIcons);
         }
 
         return $content;
@@ -186,12 +214,12 @@ module.exports = {
                  */
                 /**
                  * @name GridBaseOptions.rowDragging.boundary
-                 * @type string|Node|jQuery
+                 * @type string|Element|jQuery
                  * @default undefined
                  */
                 /**
                  * @name GridBaseOptions.rowDragging.container
-                 * @type string|Node|jQuery
+                 * @type string|Element|jQuery
                  * @default undefined
                  */
                 /**
@@ -201,7 +229,7 @@ module.exports = {
                  * @type_function_param1_field1 itemData:any
                  * @type_function_param1_field2 itemElement:dxElement
                  * @type_function_param2 containerElement:dxElement
-                 * @type_function_return string|Node|jQuery
+                 * @type_function_return string|Element|jQuery
                  * @default undefined
                  */
                 /**
@@ -350,6 +378,7 @@ module.exports = {
                  * @type_function_param1_field8 fromData:any
                  * @type_function_param1_field9 toData:any
                  * @type_function_param1_field10 dropInsideItem:boolean
+                 * @type_function_param1_field11 promise:Promise<void>
                  */
             }
         };

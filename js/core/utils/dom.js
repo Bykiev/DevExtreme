@@ -8,6 +8,7 @@ const inArray = require('./array').inArray;
 const typeUtils = require('./type');
 const isDefined = typeUtils.isDefined;
 const isRenderer = typeUtils.isRenderer;
+const isWindow = typeUtils.isWindow;
 const htmlParser = require('../../core/utils/html_parser');
 let elementStrategy;
 
@@ -173,9 +174,22 @@ const contains = function(container, element) {
     if(!element) {
         return false;
     }
-    element = domAdapter.isTextNode(element) ? element.parentNode : element;
 
-    return domAdapter.isDocument(container) ? container.documentElement.contains(element) : container.contains(element);
+    if(domAdapter.isTextNode(element)) {
+        element = element.parentNode;
+    }
+
+    if(domAdapter.isDocument(container)) {
+        return container.documentElement.contains(element);
+    }
+
+    if(isWindow(container)) {
+        return contains(container.document, element);
+    }
+
+    return container.contains
+        ? container.contains(element)
+        : !!(element.compareDocumentPosition(container) & element.DOCUMENT_POSITION_CONTAINS);
 };
 
 const getPublicElement = function($element) {
@@ -207,7 +221,7 @@ const createTextElementHiddenCopy = function(element, text, options) {
         'paddingBottom': includePaddings ? elementStyles.paddingBottom : '',
         'paddingLeft': includePaddings ? elementStyles.paddingLeft : '',
         'visibility': 'hidden',
-        'whiteSpace': 'nowrap',
+        'whiteSpace': 'pre',
         'position': 'absolute',
         'float': 'left'
     });
